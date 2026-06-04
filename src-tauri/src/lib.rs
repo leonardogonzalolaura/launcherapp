@@ -14,36 +14,33 @@ pub struct AppState {
     pub process_manager: Arc<ProcessManager>,
 }
 
-// Hacer run async o usar tokio runtime
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    // Usar tokio runtime para ejecutar async
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    
-    rt.block_on(async {
-        // Cargar proyectos guardados de forma asíncrona
-        let projects = match commands::project::load_projects_from_file().await {
-            Ok(proj) => proj,
-            Err(_) => HashMap::new(),
-        };
-        
-        let state = AppState {
-            projects: Arc::new(Mutex::new(projects)),
-            process_manager: Arc::new(ProcessManager::new()),
-        };
+#[tokio::main]
+pub async fn run() {
+    let projects = match commands::project::load_projects_from_file().await {
+        Ok(proj) => proj,
+        Err(_) => HashMap::new(),
+    };
 
-        tauri::Builder::default()
-            .manage(state)
-            .invoke_handler(tauri::generate_handler![
-                commands::project::add_project,
-                commands::project::get_projects,
-                commands::project::remove_project,
-                commands::project::update_project_config,
-                commands::process::execute_project_command,
-                commands::process::stop_process,
-                commands::detection::detect_project_from_path,
-            ])
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
-    });
+    let state = AppState {
+        projects: Arc::new(Mutex::new(projects)),
+        process_manager: Arc::new(ProcessManager::new()),
+    };
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(state)
+        .invoke_handler(tauri::generate_handler![
+            commands::project::add_project,
+            commands::project::get_projects,
+            commands::project::remove_project,
+            commands::project::update_project_config,
+            commands::project::add_custom_command,
+            commands::project::delete_project_config,
+            commands::process::spawn_project_command,
+            commands::process::stop_process,
+            commands::process::get_active_processes,
+            commands::detection::detect_project_from_path,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }

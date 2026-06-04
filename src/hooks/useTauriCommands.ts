@@ -1,0 +1,99 @@
+import { invoke } from '@tauri-apps/api/core';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import {
+  Project,
+  DetectedInfo,
+  ProjectConfig,
+  ProcessInfo,
+  StreamMessage,
+} from '../types';
+
+export const useTauriCommands = () => {
+  // ─── Projects ──────────────────────────────────────────────────────────────
+  const addProject = async (path: string): Promise<Project> => {
+    return await invoke('add_project', { path });
+  };
+
+  const getProjects = async (): Promise<Project[]> => {
+    return await invoke('get_projects');
+  };
+
+  const removeProject = async (id: string): Promise<void> => {
+    return await invoke('remove_project', { id });
+  };
+
+  const updateProjectConfig = async (
+    projectId: string,
+    configIndex: number,
+    updatedConfig: ProjectConfig
+  ): Promise<Project> => {
+    return await invoke('update_project_config', { projectId, configIndex, updatedConfig });
+  };
+
+  const addCustomCommand = async (
+    projectId: string,
+    newConfig: ProjectConfig
+  ): Promise<Project> => {
+    return await invoke('add_custom_command', { projectId, newConfig });
+  };
+
+  const deleteProjectConfig = async (
+    projectId: string,
+    configIndex: number
+  ): Promise<Project> => {
+    return await invoke('delete_project_config', { projectId, configIndex });
+  };
+
+  // ─── Detection ─────────────────────────────────────────────────────────────
+  const detectProject = async (path: string): Promise<DetectedInfo> => {
+    return await invoke('detect_project_from_path', { path });
+  };
+
+  // ─── Process Execution ─────────────────────────────────────────────────────
+  const spawnProjectCommand = async (
+    projectId: string,
+    configName: string
+  ): Promise<ProcessInfo> => {
+    return await invoke('spawn_project_command', { projectId, configName });
+  };
+
+  const stopProcess = async (processId: string): Promise<void> => {
+    return await invoke('stop_process', { processId });
+  };
+
+  const getActiveProcesses = async (): Promise<ProcessInfo[]> => {
+    return await invoke('get_active_processes');
+  };
+
+  // ─── Event Listeners ───────────────────────────────────────────────────────
+  const onProcessOutput = async (
+    callback: (msg: StreamMessage) => void
+  ): Promise<UnlistenFn> => {
+    return await listen<StreamMessage>('process-output', (event) => {
+      callback(event.payload);
+    });
+  };
+
+  const onProcessExit = async (
+    callback: (data: { process_id: string; exit_code: number | null }) => void
+  ): Promise<UnlistenFn> => {
+    return await listen<{ process_id: string; exit_code: number | null }>('process-exit', (event) => {
+      callback(event.payload);
+    });
+  };
+
+  return {
+    addProject,
+    getProjects,
+    removeProject,
+    updateProjectConfig,
+    addCustomCommand,
+    deleteProjectConfig,
+    detectProject,
+    spawnProjectCommand,
+    stopProcess,
+    getActiveProcesses,
+    onProcessOutput,
+    onProcessExit,
+  };
+};

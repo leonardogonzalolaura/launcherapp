@@ -1,11 +1,10 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
-use std::sync::Arc;
 use tauri::command;
 use uuid::Uuid;
 use super::super::models::project::{Project, ProjectConfig, CustomPaths, ProjectType};
 use super::detection::{ProjectDetector, DetectedInfo};
-use crate::commands::process::ProcessManager;
+use crate::AppState; 
 
 #[command]
 pub async fn add_project(
@@ -107,7 +106,7 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
         }
         ProjectType::CSharp => {
             if let Some(csproj) = ProjectDetector::find_csproj(project_path) {
-                let project_name = csproj.file_stem().unwrap_or_default().to_string_lossy();
+                let _project_name = csproj.file_stem().unwrap_or_default().to_string_lossy();
                 configs.push(ProjectConfig {
                     name: "run".to_string(),
                     command: format!("dotnet run --project {}", csproj.display()),
@@ -138,12 +137,6 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
     }
     
     configs
-}
-
-// Estado global de la app
-pub struct AppState {
-    pub projects: Arc<tokio::sync::Mutex<HashMap<String, Project>>>,
-    pub process_manager: Arc<ProcessManager>,
 }
 
 // Persistencia
@@ -215,6 +208,53 @@ pub async fn update_project_config(
         save_projects_to_file(&projects).await?;
     }
     
+    Ok(updated_project)
+}
+
+#[command]
+pub async fn add_custom_command(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    new_config: ProjectConfig,
+) -> Result<Project, String> {
+    let updated_project = {
+        let mut projects = state.projects.lock().await;
+        let project = projects.get_mut(&project_id).ok_or("Project not found")?;
+        project.configurations.push(new_config);
+        project.clone()
+    };
+
+    {
+        let projects = state.projects.lock().await;
+        save_projects_to_file(&projects).await?;
+    }
+
+    Ok(updated_project)
+}
+
+#[command]
+pub async fn delete_project_config(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    config_index: usize,
+) -> Result<Project, String> {
+    let updated_project = {
+        let mut projects = state.projects.lock().await;
+        let project = projects.get_mut(&project_id).ok_or("Project not found")?;
+
+        if config_index >= project.configurations.len() {
+            return Err("Configuration index out of bounds".to_string());
+        }
+
+        project.configurations.remove(config_index);
+        project.clone()
+    };
+
+    {
+        let projects = state.projects.lock().await;
+        save_projects_to_file(&projects).await?;
+    }
+
     Ok(updated_project)
 }
 

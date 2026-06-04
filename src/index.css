@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2e2e50 transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: #2e2e50;
+    border-radius: 3px;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 rounded-sm transition-all font-medium text-white flex items-center gap-2;
+    background-color: #6e7fff;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background-color: #8090ff;
+    box-shadow: 0 0 12px rgba(110,127,255,.25);
+  }
+  
+  .btn-secondary {
+    @apply px-4 py-2 rounded-sm transition-all flex items-center gap-2;
+    background-color: #1a1a2e;
+    color: #8890b0;
+    border: 1px solid #2e2e50;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background-color: #1f1f35;
+    color: #e2e4f0;
+  }
+  
+  .command-item {
+    @apply flex items-center gap-3 p-3 rounded-sm cursor-pointer transition-all w-full;
+    background-color: #0d0d14;
+    border: 1px solid #2e2e50;
+  }
+  .command-item:hover {
+    background-color: #1f1f35;
+    border-color: #3a4199;
+  }
+  .command-item:active {
+    transform: scale(0.98);
+  }
+  
+  .console-line {
+    @apply flex gap-3 mb-1 py-0.5;
+  }
+}
