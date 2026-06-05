@@ -12,6 +12,42 @@ import { UnlistenFn } from '@tauri-apps/api/event';
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
 
+// Storage keys
+const STORAGE_KEYS = {
+  PROJECTS: 'project_launcher_projects',
+  SELECTED_PROJECT_ID: 'project_launcher_selected_project_id'
+};
+
+// Helper functions for localStorage
+const loadProjectsFromStorage = (): Project[] => {
+  const stored = localStorage.getItem(STORAGE_KEYS.PROJECTS);
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch (e) {
+      console.error('Failed to parse projects from storage:', e);
+      return [];
+    }
+  }
+  return [];
+};
+
+const saveProjectsToStorage = (projects: Project[]) => {
+  localStorage.setItem(STORAGE_KEYS.PROJECTS, JSON.stringify(projects));
+};
+
+const loadSelectedProjectIdFromStorage = (): string | null => {
+  return localStorage.getItem(STORAGE_KEYS.SELECTED_PROJECT_ID);
+};
+
+const saveSelectedProjectIdToStorage = (projectId: string | null) => {
+  if (projectId) {
+    localStorage.setItem(STORAGE_KEYS.SELECTED_PROJECT_ID, projectId);
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.SELECTED_PROJECT_ID);
+  }
+};
+
 // ─── Custom Command Modal ─────────────────────────────────────────────────────
 
 interface CustomCommandModalProps {
@@ -284,7 +320,7 @@ function ConsoleTab({ tab, onStop, onClose }: ConsoleTabProps) {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 function App() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [processTabs, setProcessTabs] = useState<ProcessTab[]>([]);
@@ -301,6 +337,35 @@ function App() {
     addCustomCommand, updateProjectConfig, deleteProjectConfig,
     onProcessOutput, onProcessExit,
   } = useTauriCommands();
+
+  // Save projects to localStorage whenever they change
+  useEffect(() => {
+    saveProjectsToStorage(projects);
+  }, [projects]);
+
+  // Load selected project from localStorage on mount
+  useEffect(() => {
+    const savedProjectId = loadSelectedProjectIdFromStorage();
+    if (savedProjectId && projects.length > 0) {
+      const found = projects.find(p => p.id === savedProjectId);
+      if (found) {
+        setSelectedProject(found);
+      } else if (projects.length > 0) {
+        setSelectedProject(projects[0]);
+        saveSelectedProjectIdToStorage(projects[0].id);
+      }
+    } else if (projects.length > 0 && !selectedProject) {
+      setSelectedProject(projects[0]);
+      saveSelectedProjectIdToStorage(projects[0].id);
+    }
+  }, [projects]);
+
+  // Save selected project to localStorage when it changes
+  useEffect(() => {
+    if (selectedProject) {
+      saveSelectedProjectIdToStorage(selectedProject.id);
+    }
+  }, [selectedProject]);
 
   // ─── Setup event listeners ───────────────────────────────────────────────
   useEffect(() => {
@@ -343,20 +408,21 @@ function App() {
     };
   }, []);
 
-  // ─── Load projects ───────────────────────────────────────────────────────
+  // ─── Load projects from Tauri on mount (sync with localStorage) ──────────
   useEffect(() => {
-    loadProjects();
+    const syncProjects = async () => {
+      try {
+        const tauriProjects = await getProjects();
+        // Only sync if localStorage is empty and Tauri has projects
+        if (projects.length === 0 && tauriProjects.length > 0) {
+          setProjects(tauriProjects);
+        }
+      } catch (e) {
+        console.error('Failed to sync projects from Tauri:', e);
+      }
+    };
+    syncProjects();
   }, []);
-
-  const loadProjects = async () => {
-    try {
-      const list = await getProjects();
-      setProjects(list);
-      if (list.length > 0 && !selectedProject) setSelectedProject(list[0]);
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const handleAddProject = async () => {
     const selected = await open({ directory: true, multiple: false, title: 'Select Project Directory' });
@@ -365,8 +431,12 @@ function App() {
       try {
         await detectProject(selected);
         const newProject = await addProject(selected);
-        const updated = [...projects, newProject];
-        setProjects(updated);
+        setProjects(prev => {
+          // Check if project already exists
+          const exists = prev.some(p => p.id === newProject.id);
+          if (exists) return prev;
+          return [...prev, newProject];
+        });
         setSelectedProject(newProject);
       } catch (e) {
         console.error(e);
