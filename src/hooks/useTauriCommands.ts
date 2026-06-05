@@ -22,6 +22,10 @@ export const useTauriCommands = () => {
     return await invoke('remove_project', { id });
   };
 
+  const clearAllProjects = async (): Promise<void> => {
+    return await invoke('clear_all_projects');
+  };
+
   const updateProjectConfig = async (
     projectId: string,
     configIndex: number,
@@ -86,6 +90,7 @@ export const useTauriCommands = () => {
     addProject,
     getProjects,
     removeProject,
+    clearAllProjects,
     updateProjectConfig,
     addCustomCommand,
     deleteProjectConfig,

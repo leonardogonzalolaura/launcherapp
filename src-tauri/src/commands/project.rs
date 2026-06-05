@@ -143,7 +143,7 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
 async fn save_projects_to_file(projects: &HashMap<String, Project>) -> Result<(), String> {
     let config_dir = dirs::config_dir()
         .ok_or("Could not find config dir")?
-        .join("project-launcher");
+        .join("launcherapp");
     
     tokio::fs::create_dir_all(&config_dir).await
         .map_err(|e| e.to_string())?;
@@ -171,13 +171,19 @@ pub async fn remove_project(
     id: String,
 ) -> Result<(), String> {
     let mut projects = state.projects.lock().await;
-    
-    if projects.remove(&id).is_some() {
-        save_projects_to_file(&projects).await?;
-        Ok(())
-    } else {
-        Err("Project not found".to_string())
-    }
+    projects.remove(&id);
+    save_projects_to_file(&projects).await?;
+    Ok(())
+}
+
+#[command]
+pub async fn clear_all_projects(
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let mut projects = state.projects.lock().await;
+    projects.clear();
+    save_projects_to_file(&projects).await?;
+    Ok(())
 }
 
 #[command]

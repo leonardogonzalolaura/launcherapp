@@ -33,6 +33,7 @@ pub async fn run() {
             commands::project::add_project,
             commands::project::get_projects,
             commands::project::remove_project,
+            commands::project::clear_all_projects,
             commands::project::update_project_config,
             commands::project::add_custom_command,
             commands::project::delete_project_config,

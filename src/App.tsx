@@ -330,9 +330,10 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
 
   const unlistenRef = useRef<UnlistenFn[]>([]);
+  const restoringRef = useRef(false);
 
   const {
-    getProjects, addProject, detectProject,
+    getProjects, addProject, detectProject, removeProject, clearAllProjects,
     spawnProjectCommand, stopProcess,
     addCustomCommand, updateProjectConfig, deleteProjectConfig,
     onProcessOutput, onProcessExit,
@@ -410,11 +411,12 @@ function App() {
 
   // ─── Load projects from Tauri on mount (sync with localStorage) ──────────
   useEffect(() => {
+    if (restoringRef.current) return;
+    restoringRef.current = true;
     const syncProjects = async () => {
       try {
         const tauriProjects = await getProjects();
-        // Only sync if localStorage is empty and Tauri has projects
-        if (projects.length === 0 && tauriProjects.length > 0) {
+        if (tauriProjects.length > 0) {
           setProjects(tauriProjects);
         }
       } catch (e) {
@@ -433,8 +435,10 @@ function App() {
         const newProject = await addProject(selected);
         setProjects(prev => {
           // Check if project already exists
-          const exists = prev.some(p => p.id === newProject.id);
-          if (exists) return prev;
+          const exists = prev.some(p => p.id === newProject.id || p.path === newProject.path);
+          if (exists) {
+            return prev.map(p => (p.id === newProject.id || p.path === newProject.path) ? newProject : p);
+          }
           return [...prev, newProject];
         });
         setSelectedProject(newProject);
@@ -503,6 +507,38 @@ function App() {
     setSelectedProject(updatedProject);
   };
 
+  const handleRemoveProject = async (id: string) => {
+    try {
+      await removeProject(id);
+      setProjects(prev => {
+        const next = prev.filter(p => p.id !== id);
+        if (selectedProject?.id === id) {
+          const nextSelected = next.length > 0 ? next[0] : null;
+          setSelectedProject(nextSelected);
+          saveSelectedProjectIdToStorage(nextSelected ? nextSelected.id : null);
+        }
+        return next;
+      });
+    } catch (e) {
+      console.error("Failed to remove project:", e);
+    }
+  };
+
+  const handleClearAllProjects = async () => {
+    if (!window.confirm("¿Estás seguro de que deseas quitar todos los proyectos registrados?")) {
+      return;
+    }
+    try {
+      await clearAllProjects();
+      setProjects([]);
+      setSelectedProject(null);
+      saveSelectedProjectIdToStorage(null);
+      saveProjectsToStorage([]);
+    } catch (e) {
+      console.error("Failed to clear all projects:", e);
+    }
+  };
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const getProjectIcon = (type: string) => {
     const icons: Record<string, string> = { Python: '🐍', Scala: '🦭', CSharp: '🎯', React: '⚛️' };
@@ -549,20 +585,42 @@ function App() {
           </button>
 
           {isDropdownOpen && projects.length > 0 && (
-            <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
+            <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
               {projects.map(p => (
-                <button
+                <div
                   key={p.id}
-                  onClick={() => { setSelectedProject(p); setIsDropdownOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left"
+                  className="w-full flex items-center justify-between transition-colors"
                   style={{ backgroundColor: selectedProject?.id === p.id ? '#1f1f35' : 'transparent' }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1f1f35')}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = selectedProject?.id === p.id ? '#1f1f35' : 'transparent')}
+                  onMouseEnter={e => {
+                    if (selectedProject?.id !== p.id) {
+                      e.currentTarget.style.backgroundColor = '#1f1f35';
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (selectedProject?.id !== p.id) {
+                      e.currentTarget.style.backgroundColor = 'transparent';
+                    }
+                  }}
                 >
-                  <span>{getProjectIcon(p.project_type)}</span>
-                  <span className="flex-1 truncate">{p.name}</span>
-                  <span className="text-xs" style={{ color: '#555878' }}>{p.project_type}</span>
-                </button>
+                  <button
+                    onClick={() => { setSelectedProject(p); setIsDropdownOpen(false); }}
+                    className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left truncate"
+                  >
+                    <span>{getProjectIcon(p.project_type)}</span>
+                    <span className="flex-1 truncate">{p.name}</span>
+                    <span className="text-xs mr-1" style={{ color: '#555878' }}>{p.project_type}</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveProject(p.id);
+                    }}
+                    className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a]"
+                    title="Quitar proyecto"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -600,17 +658,31 @@ function App() {
           })}
         </div>
 
-        <button
-          onClick={handleAddProject}
-          disabled={isLoading}
-          className="px-3 py-1.5 rounded-md font-medium text-white flex items-center gap-1.5 text-sm flex-shrink-0 transition-all"
-          style={{ backgroundColor: '#6e7fff' }}
-          onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#8090ff')}
-          onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#6e7fff')}
-        >
-          {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-          Add Project
-        </button>
+        <div className="flex items-center gap-2">
+          {projects.length > 0 && (
+            <button
+              onClick={handleClearAllProjects}
+              className="px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 text-sm flex-shrink-0 transition-all text-[#fca5a5] hover:text-[#f87171]"
+              style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)'; }}
+            >
+              <Trash2 size={14} />
+              Limpiar todo
+            </button>
+          )}
+          <button
+            onClick={handleAddProject}
+            disabled={isLoading}
+            className="px-3 py-1.5 rounded-md font-medium text-white flex items-center gap-1.5 text-sm flex-shrink-0 transition-all"
+            style={{ backgroundColor: '#6e7fff' }}
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#8090ff')}
+            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#6e7fff')}
+          >
+            {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Add Project
+          </button>
+        </div>
       </div>
 
       {/* ─── Main Layout ─────────────────────────────────────────────────── */}
