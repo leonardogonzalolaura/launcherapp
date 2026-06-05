@@ -4,12 +4,13 @@ import { ProcessTab, LogLine } from '../types';
 
 interface ConsoleTabProps {
   tab: ProcessTab;
+  liveGitBranch?: string | null;
   onStop: (processId: string) => void;
   onClose: (processId: string) => void;
   onRerun: (processId: string) => void;
 }
 
-export function ConsoleTab({ tab, onStop, onClose, onRerun }: ConsoleTabProps) {
+export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,13 +39,13 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun }: ConsoleTabProps) {
           <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: '#1a1a2e', color: '#6e7fff', border: '1px solid #2e2e50' }}>
             {tab.config_name}
           </span>
-          {tab.git_branch && (
+          {(liveGitBranch ?? tab.git_branch) && (
             <span
               className="flex items-center gap-1 text-xs px-2 py-0.5 rounded font-mono"
               style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #4c1d95' }}
-              title={`Rama git: ${tab.git_branch}`}
+              title={`Rama git: ${liveGitBranch ?? tab.git_branch}`}
             >
-              ⎇ {tab.git_branch}
+              ⎇ {liveGitBranch ?? tab.git_branch}
             </span>
           )}
           <span className="text-xs" style={{ color: '#555878' }}>

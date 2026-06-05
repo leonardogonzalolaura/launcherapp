@@ -61,6 +61,8 @@ function App() {
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [editingConfig, setEditingConfig] = useState<{ config: ProjectConfig; index: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // Mapa projectId -> rama git actual (polling en vivo)
+  const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
 
   const unlistenRef = useRef<UnlistenFn[]>([]);
   const restoringRef = useRef(false);
@@ -100,6 +102,26 @@ function App() {
       saveSelectedProjectIdToStorage(selectedProject.id);
     }
   }, [selectedProject]);
+
+  // ─── Polling de rama git ────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedProject) return;
+
+    const fetchBranch = async () => {
+      try {
+        const branch = await getGitBranch(selectedProject.path);
+        setGitBranches(prev => {
+          // Solo actualizar si cambió para evitar re-renders innecesarios
+          if (prev[selectedProject.id] === branch) return prev;
+          return { ...prev, [selectedProject.id]: branch };
+        });
+      } catch { }
+    };
+
+    fetchBranch(); // Consulta inmediata al seleccionar proyecto
+    const interval = setInterval(fetchBranch, 3000); // Polling cada 3s
+    return () => clearInterval(interval);
+  }, [selectedProject?.id]);
 
   // ─── Setup event listeners ───────────────────────────────────────────────
   useEffect(() => {
@@ -421,10 +443,9 @@ function App() {
                 <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
                 <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
                 <span style={{ color: '#4a4a70' }}>·</span>
-                <span>{tab.config_name}</span>
-                {tab.git_branch && (
+                {(gitBranches[tab.project_id] ?? tab.git_branch) && (
                   <span className="flex items-center gap-0.5" style={{ color: '#a78bfa', fontSize: '10px' }}>
-                    ⎇ {tab.git_branch}
+                    ⎇ {gitBranches[tab.project_id] ?? tab.git_branch}
                   </span>
                 )}
                 <span
@@ -455,7 +476,18 @@ function App() {
                   <span className="text-2xl">{getProjectIcon(selectedProject.project_type)}</span>
                   <div>
                     <div className="font-semibold text-sm">{selectedProject.name}</div>
-                    <div className="text-xs" style={{ color: '#555878' }}>{selectedProject.project_type}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs" style={{ color: '#555878' }}>{selectedProject.project_type}</span>
+                      {gitBranches[selectedProject.id] && (
+                        <span
+                          className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono"
+                          style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}
+                          title="Rama git actual"
+                        >
+                          ⎇ {gitBranches[selectedProject.id]}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="text-xs font-mono truncate p-2 rounded" style={{ color: '#555878', backgroundColor: '#0d0d14', border: '1px solid #1e1e38' }}>
@@ -543,6 +575,7 @@ function App() {
             <ConsoleTab
               key={activeTab.process_id}
               tab={activeTab}
+              liveGitBranch={gitBranches[activeTab.project_id]}
               onStop={handleStop}
               onClose={handleCloseTab}
               onRerun={handleRerun}
