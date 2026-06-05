@@ -1,6 +1,6 @@
 import React from 'react';
 import { Project } from '../types';
-import { ChevronDown, Folder, Code2 } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 interface Props {
   projects: Project[];

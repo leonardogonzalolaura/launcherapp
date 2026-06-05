@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   Plus, FolderOpen, ChevronDown, Terminal, Play, Hammer,
   Square, Trash2, X, Settings, PlusCircle, ChevronRight,
-  Loader2, AlertCircle, CheckCircle2, Edit3, Save
+  Loader2, AlertCircle, Edit3, Save
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
@@ -217,9 +217,9 @@ function ConsoleTab({ tab, onStop, onClose }: ConsoleTabProps) {
     switch (type) {
       case 'stdout': return '#a8ffb0';
       case 'stderr': return '#fca5a5';
-      case 'error':  return '#f87171';
-      case 'info':   return '#8890b0';
-      default:       return '#8890b0';
+      case 'error': return '#f87171';
+      case 'info': return '#8890b0';
+      default: return '#8890b0';
     }
   };
 

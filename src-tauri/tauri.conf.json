@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "launcherapp",
+        "title": "launcherapp v.0.1.0",
         "width": 800,
         "height": 600
       }

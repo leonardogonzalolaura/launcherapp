@@ -9,7 +9,10 @@ use tauri::{command, AppHandle, Emitter};
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
 
+// Hides the console window on Windows
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+// ─── Data Structures ──────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamMessage {
@@ -32,25 +35,39 @@ pub struct ProcessInfo {
     pub started_at: String,
 }
 
+/// Tracks a spawned process: its reader task handle + the OS PID for killing
+struct ActiveEntry {
+    handle: tokio::task::JoinHandle<()>,
+    pid: u32,
+}
+
 pub struct ProcessManager {
-    pub active_processes: Arc<Mutex<HashMap<String, tokio::task::JoinHandle<()>>>>,
+    /// Map from our internal process_id → ActiveEntry
+    active: Arc<Mutex<HashMap<String, ActiveEntry>>>,
+    /// Map from process_id → metadata for display
     pub process_info: Arc<Mutex<HashMap<String, ProcessInfo>>>,
 }
 
 impl ProcessManager {
     pub fn new() -> Self {
         Self {
-            active_processes: Arc::new(Mutex::new(HashMap::new())),
+            active: Arc::new(Mutex::new(HashMap::new())),
             process_info: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
     fn build_command(command_str: &str, working_dir: &Path, env_vars: &HashMap<String, String>) -> Command {
         let mut cmd = Command::new("powershell");
-        cmd.args(&["-NoProfile", "-NonInteractive", "-Command", command_str]);
+        cmd.args(&[
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            command_str,
+        ]);
 
         #[cfg(target_os = "windows")]
         {
+            use std::os::windows::process::CommandExt;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
@@ -65,6 +82,24 @@ impl ProcessManager {
         cmd
     }
 
+    /// Kills the process tree using `taskkill /F /T /PID` on Windows.
+    /// This ensures sub-processes (e.g. sbt → JVM) are also terminated.
+    async fn kill_by_pid(pid: u32) {
+        #[cfg(target_os = "windows")]
+        {
+            let _ = std::process::Command::new("taskkill")
+                .args(&["/F", "/T", "/PID", &pid.to_string()])
+                //.creation_flags(CREATE_NO_WINDOW)
+                .output();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            let _ = std::process::Command::new("kill")
+                .args(&["-TERM", &pid.to_string()])
+                .output();
+        }
+    }
+
     pub async fn spawn_streaming(
         &self,
         app_handle: AppHandle,
@@ -76,10 +111,11 @@ impl ProcessManager {
         working_dir: std::path::PathBuf,
         env_vars: HashMap<String, String>,
     ) -> Result<ProcessInfo, String> {
-        // Build command
         let mut cmd = Self::build_command(&command_str, &working_dir, &env_vars);
+        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
 
-        let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn process: {}", e))?;
+        // Grab the OS-level PID immediately before moving child into the task
+        let os_pid = child.id().ok_or("Could not get process PID")?;
 
         let stdout = child.stdout.take().expect("no stdout");
         let stderr = child.stderr.take().expect("no stderr");
@@ -96,7 +132,7 @@ impl ProcessManager {
             started_at: now.clone(),
         };
 
-        // Store info
+        // Store metadata
         {
             let mut info_map = self.process_info.lock().await;
             info_map.insert(process_id.clone(), info.clone());
@@ -108,22 +144,23 @@ impl ProcessManager {
             project_name: project_name.clone(),
             config_name: config_name.clone(),
             output_type: "info".to_string(),
-            content: format!("▶ Started: {}", command_str),
+            content: format!("▶ Started (PID {}): {}", os_pid, command_str),
             timestamp: now.clone(),
         });
 
-        // Spawn background task
+        // Clone refs for the background task
         let pid = process_id.clone();
         let pname = project_name.clone();
         let cname = config_name.clone();
         let ah = app_handle.clone();
         let process_info_ref = self.process_info.clone();
-        let active_ref = self.active_processes.clone();
+        let active_ref = self.active.clone();
 
         let handle = tokio::spawn(async move {
             let mut stdout_reader = BufReader::new(stdout).lines();
             let mut stderr_reader = BufReader::new(stderr).lines();
 
+            // Stream both stdout and stderr concurrently
             loop {
                 tokio::select! {
                     line = stdout_reader.next_line() => {
@@ -161,12 +198,11 @@ impl ProcessManager {
                 }
             }
 
-            // Wait for exit
+            // Wait for the child to exit naturally
             let exit_code = child.wait().await.ok().and_then(|s| s.code());
             let exit_type = match exit_code {
                 Some(0) => "info",
-                Some(_) => "error",
-                None => "error",
+                _ => "error",
             };
 
             let _ = ah.emit("process-output", StreamMessage {
@@ -174,7 +210,10 @@ impl ProcessManager {
                 project_name: pname.clone(),
                 config_name: cname.clone(),
                 output_type: exit_type.to_string(),
-                content: format!("■ Process exited with code: {}", exit_code.map(|c| c.to_string()).unwrap_or("unknown".to_string())),
+                content: format!(
+                    "■ Process exited with code: {}",
+                    exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".to_string())
+                ),
                 timestamp: chrono::Local::now().to_rfc3339(),
             });
 
@@ -183,40 +222,43 @@ impl ProcessManager {
                 "exit_code": exit_code,
             }));
 
-            // Update status
+            // Mark as stopped
             {
                 let mut info_map = process_info_ref.lock().await;
                 if let Some(info) = info_map.get_mut(&pid) {
                     info.status = "stopped".to_string();
                 }
             }
-
-            // Remove from active
+            // Remove from active map
             {
                 let mut active = active_ref.lock().await;
                 active.remove(&pid);
             }
         });
 
-        // Store handle
+        // Store handle + PID
         {
-            let mut active = self.active_processes.lock().await;
-            active.insert(process_id.clone(), handle);
+            let mut active = self.active.lock().await;
+            active.insert(process_id.clone(), ActiveEntry { handle, pid: os_pid });
         }
 
         Ok(info)
     }
 
     pub async fn stop(&self, process_id: &str, app_handle: &AppHandle) -> Result<(), String> {
-        // Abort the task
-        {
-            let mut active = self.active_processes.lock().await;
-            if let Some(handle) = active.remove(process_id) {
-                handle.abort();
-            }
+        let entry = {
+            let mut active = self.active.lock().await;
+            active.remove(process_id)
+        };
+
+        if let Some(entry) = entry {
+            // 1. Kill the OS process tree (sbt → JVM, npm → node, etc.)
+            Self::kill_by_pid(entry.pid).await;
+            // 2. Abort the tokio reader task
+            entry.handle.abort();
         }
 
-        // Update status
+        // Update metadata
         {
             let mut info_map = self.process_info.lock().await;
             if let Some(info) = info_map.get_mut(process_id) {
@@ -243,7 +285,7 @@ impl ProcessManager {
 
     pub async fn get_active_processes(&self) -> Vec<ProcessInfo> {
         let info_map = self.process_info.lock().await;
-        let active = self.active_processes.lock().await;
+        let active = self.active.lock().await;
         info_map.values()
             .filter(|p| active.contains_key(&p.id) && p.status == "running")
             .cloned()
@@ -275,7 +317,7 @@ pub async fn spawn_project_command(
             .ok_or("Config not found")?;
 
         let cmd = build_command_with_paths(config, project).await?;
-        // Use project root if working_dir is empty or doesn't exist
+        // Fall back to project root if working_dir is empty/missing
         let wd = if config.working_dir.as_os_str().is_empty() || !config.working_dir.exists() {
             project.path.clone()
         } else {
@@ -328,7 +370,7 @@ async fn build_command_with_paths(
     let mut command = config.command.clone();
 
     if let Some(java_home) = &config.custom_paths.java_home {
-        command = format!("$env:JAVA_HOME='{}'; {}", java_home, command);
+        command = format!("$env:JAVA_HOME='{}'; $env:Path=\"$env:JAVA_HOME\\bin;$env:Path\"; {}", java_home, command);
     }
 
     if let Some(sbt_path) = &config.custom_paths.sbt_path {
