@@ -1908,6 +1908,7 @@ dependencies = [
  "chrono",
  "dirs 5.0.1",
  "glob",
+ "once_cell",
  "regex",
  "serde",
  "serde_json",

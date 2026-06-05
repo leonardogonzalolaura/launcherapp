@@ -1,3 +1,4 @@
+use regex::Regex;
 use std::process::Stdio;
 use tokio::process::Command;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -8,9 +9,19 @@ use tokio::sync::Mutex;
 use tauri::{command, AppHandle, Emitter};
 use serde::{Serialize, Deserialize};
 use uuid::Uuid;
+use once_cell::sync::Lazy;
 
 // Hides the console window on Windows
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+
+static ANSI_REGEX: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"\x1b\[[0-9;]*[mGKHF]").unwrap()
+});
+
+fn strip_ansi_codes(text: &str) -> String {
+    ANSI_REGEX.replace_all(text, "").to_string()
+}
 
 // ─── Data Structures ──────────────────────────────────────────────────────────
 
@@ -87,10 +98,11 @@ impl ProcessManager {
     async fn kill_by_pid(pid: u32) {
         #[cfg(target_os = "windows")]
         {
-            let _ = std::process::Command::new("taskkill")
+            let _ = tokio::process::Command::new("taskkill")
                 .args(&["/F", "/T", "/PID", &pid.to_string()])
-                //.creation_flags(CREATE_NO_WINDOW)
-                .output();
+                .creation_flags(CREATE_NO_WINDOW)
+                .output()
+                .await;
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -166,12 +178,13 @@ impl ProcessManager {
                     line = stdout_reader.next_line() => {
                         match line {
                             Ok(Some(text)) => {
+                                let clean_text = strip_ansi_codes(&text);
                                 let _ = ah.emit("process-output", StreamMessage {
                                     process_id: pid.clone(),
                                     project_name: pname.clone(),
                                     config_name: cname.clone(),
                                     output_type: "stdout".to_string(),
-                                    content: text,
+                                    content: clean_text,
                                     timestamp: chrono::Local::now().to_rfc3339(),
                                 });
                             }
@@ -182,12 +195,13 @@ impl ProcessManager {
                     line = stderr_reader.next_line() => {
                         match line {
                             Ok(Some(text)) => {
+                                let clean_text = strip_ansi_codes(&text);
                                 let _ = ah.emit("process-output", StreamMessage {
-                                    process_id: pid.clone(),
+                                   process_id: pid.clone(),
                                     project_name: pname.clone(),
                                     config_name: cname.clone(),
                                     output_type: "stderr".to_string(),
-                                    content: text,
+                                    content: clean_text,
                                     timestamp: chrono::Local::now().to_rfc3339(),
                                 });
                             }
