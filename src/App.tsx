@@ -214,12 +214,12 @@ function App() {
         prev.map(tab =>
           tab.process_id === processId
             ? {
-                ...tab,
-                process_id: info.id,
-                status: 'running',
-                logs: [],
-                started_at: info.started_at,
-              }
+              ...tab,
+              process_id: info.id,
+              status: 'running',
+              logs: [],
+              started_at: info.started_at,
+            }
             : tab
         )
       );
@@ -325,7 +325,7 @@ function App() {
       <div className="h-13 min-h-[52px] px-5 flex items-center justify-between gap-4" style={{ backgroundColor: '#10101c', borderBottom: '1px solid #1e1e38' }}>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-xl">🚀</span>
-          <span className="font-bold text-sm tracking-wide" style={{ color: '#a0a8ff' }}>Project Launcher</span>
+          <span className="font-bold text-sm tracking-wide" style={{ color: '#a0a8ff' }}>Launcher</span>
         </div>
 
         {/* Project Dropdown */}
@@ -425,31 +425,6 @@ function App() {
           })}
         </div>
 
-        <div className="flex items-center gap-2">
-          {projects.length > 0 && (
-            <button
-              onClick={handleClearAllProjects}
-              className="px-3 py-1.5 rounded-md font-medium flex items-center gap-1.5 text-sm flex-shrink-0 transition-all text-[#fca5a5] hover:text-[#f87171]"
-              style={{ backgroundColor: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.2)' }}
-              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.15)'; }}
-              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.08)'; }}
-            >
-              <Trash2 size={14} />
-              Limpiar todo
-            </button>
-          )}
-          <button
-            onClick={handleAddProject}
-            disabled={isLoading}
-            className="px-3 py-1.5 rounded-md font-medium text-white flex items-center gap-1.5 text-sm flex-shrink-0 transition-all"
-            style={{ backgroundColor: '#6e7fff' }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#8090ff')}
-            onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#6e7fff')}
-          >
-            {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-            Add Project
-          </button>
-        </div>
       </div>
 
       {/* ─── Main Layout ─────────────────────────────────────────────────── */}
@@ -596,6 +571,36 @@ function App() {
           onClose={() => { setShowCustomModal(false); setEditingConfig(null); }}
         />
       )}
+
+      {/* Footer con estadísticas y acciones */}
+      <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid #1e1e38' }}>
+        <div className="flex gap-4" style={{ color: '#555878' }}>
+          <span>📁 {projects.length} proyectos</span>
+          <span>🖥️ {processTabs.length} procesos activos</span>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={handleAddProject}
+            disabled={isLoading}
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors"
+          >
+            {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+            <span>Agregar</span>
+          </button>
+
+          {projects.length > 0 && (
+            <button
+              onClick={handleClearAllProjects}
+              className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#2d2d4a] transition-colors"
+              style={{ color: '#fca5a5' }}
+            >
+              <Trash2 size={12} />
+              <span>Limpiar projectos registrados</span>
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
