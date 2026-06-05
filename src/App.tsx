@@ -69,7 +69,7 @@ function App() {
     getProjects, addProject, detectProject, removeProject, clearAllProjects,
     spawnProjectCommand, stopProcess,
     addCustomCommand, updateProjectConfig, deleteProjectConfig,
-    onProcessOutput, onProcessExit,
+    onProcessOutput, onProcessExit, getGitBranch,
   } = useTauriCommands();
 
   // Save projects to localStorage whenever they change
@@ -187,7 +187,10 @@ function App() {
   const handleExecute = async (configName: string) => {
     if (!selectedProject) return;
     try {
-      const info = await spawnProjectCommand(selectedProject.id, configName);
+      const [info, branch] = await Promise.all([
+        spawnProjectCommand(selectedProject.id, configName),
+        getGitBranch(selectedProject.path),
+      ]);
       const newTab: ProcessTab = {
         process_id: info.id,
         project_id: selectedProject.id,
@@ -196,6 +199,7 @@ function App() {
         status: 'running',
         logs: [],
         started_at: info.started_at,
+        git_branch: branch,
       };
       setProcessTabs(prev => [...prev, newTab]);
       setActiveTabId(info.id);
@@ -209,7 +213,11 @@ function App() {
     if (!tabToRerun) return;
 
     try {
-      const info = await spawnProjectCommand(tabToRerun.project_id, tabToRerun.config_name);
+      const project = projects.find(p => p.id === tabToRerun.project_id);
+      const [info, branch] = await Promise.all([
+        spawnProjectCommand(tabToRerun.project_id, tabToRerun.config_name),
+        project ? getGitBranch(project.path) : Promise.resolve(null),
+      ]);
       setProcessTabs(prev =>
         prev.map(tab =>
           tab.process_id === processId
@@ -219,6 +227,7 @@ function App() {
               status: 'running',
               logs: [],
               started_at: info.started_at,
+              git_branch: branch,
             }
             : tab
         )
@@ -413,6 +422,11 @@ function App() {
                 <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
                 <span style={{ color: '#4a4a70' }}>·</span>
                 <span>{tab.config_name}</span>
+                {tab.git_branch && (
+                  <span className="flex items-center gap-0.5" style={{ color: '#a78bfa', fontSize: '10px' }}>
+                    ⎇ {tab.git_branch}
+                  </span>
+                )}
                 <span
                   className="ml-1 rounded p-0.5 hover:text-white transition-colors"
                   onClick={e => { e.stopPropagation(); handleCloseTab(tab.process_id); }}

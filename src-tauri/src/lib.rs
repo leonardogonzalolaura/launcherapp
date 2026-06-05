@@ -41,6 +41,7 @@ pub async fn run() {
             commands::process::stop_process,
             commands::process::get_active_processes,
             commands::detection::detect_project_from_path,
+            commands::project::get_git_branch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,10 +1,32 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::process::Command;
 use tauri::command;
 use uuid::Uuid;
 use super::super::models::project::{Project, ProjectConfig, CustomPaths, ProjectType};
 use super::detection::{ProjectDetector, DetectedInfo};
 use crate::AppState; 
+
+/// Devuelve la rama git activa del proyecto, o None si no es un repo git.
+#[command]
+pub async fn get_git_branch(path: String) -> Result<Option<String>, String> {
+    let output = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(&path)
+        .output();
+
+    match output {
+        Ok(out) if out.status.success() => {
+            let branch = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if branch.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(branch))
+            }
+        }
+        _ => Ok(None), // No es un repo git o git no está instalado
+    }
+}
 
 #[command]
 pub async fn add_project(

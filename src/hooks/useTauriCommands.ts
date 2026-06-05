@@ -69,6 +69,10 @@ export const useTauriCommands = () => {
     return await invoke('get_active_processes');
   };
 
+  const getGitBranch = async (path: string): Promise<string | null> => {
+    return await invoke('get_git_branch', { path });
+  };
+
   // ─── Event Listeners ───────────────────────────────────────────────────────
   const onProcessOutput = async (
     callback: (msg: StreamMessage) => void
@@ -98,6 +102,7 @@ export const useTauriCommands = () => {
     spawnProjectCommand,
     stopProcess,
     getActiveProcesses,
+    getGitBranch,
     onProcessOutput,
     onProcessExit,
   };

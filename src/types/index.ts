@@ -78,4 +78,5 @@ export interface ProcessTab {
   status: 'running' | 'stopped' | 'error';
   logs: LogLine[];
   started_at: string;
+  git_branch?: string | null;
 }
