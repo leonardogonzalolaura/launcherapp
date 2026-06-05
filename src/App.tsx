@@ -237,7 +237,15 @@ function App() {
     }
   };
 
-  const handleCloseTab = (processId: string) => {
+  const handleCloseTab = async (processId: string) => {
+    const tab = processTabs.find(t => t.process_id === processId);
+    if (tab && tab.status === 'running') {
+      try {
+        await stopProcess(processId);
+      } catch (e) {
+        console.error("Failed to stop process when closing tab:", e);
+      }
+    }
     setProcessTabs(prev => {
       const next = prev.filter(t => t.process_id !== processId);
       if (activeTabId === processId) {
