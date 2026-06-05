@@ -1,16 +1,29 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
-use std::process::Command;
 use tauri::command;
 use uuid::Uuid;
 use super::super::models::project::{Project, ProjectConfig, CustomPaths, ProjectType};
 use super::detection::{ProjectDetector, DetectedInfo};
-use crate::AppState; 
+use crate::AppState;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Crea un Command de git sin ventana de consola en Windows.
+fn create_git_command() -> std::process::Command {
+    let mut cmd = std::process::Command::new("git");
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 /// Devuelve la rama git activa del proyecto, o None si no es un repo git.
 #[command]
 pub async fn get_git_branch(path: String) -> Result<Option<String>, String> {
-    let output = Command::new("git")
+    let output = create_git_command()
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
         .current_dir(&path)
         .output();
