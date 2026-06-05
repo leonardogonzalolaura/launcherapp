@@ -1,14 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { Square, X } from 'lucide-react';
+import { Square, X, Play } from 'lucide-react';
 import { ProcessTab, LogLine } from '../types';
 
 interface ConsoleTabProps {
   tab: ProcessTab;
   onStop: (processId: string) => void;
   onClose: (processId: string) => void;
+  onRerun: (processId: string) => void;
 }
 
-export function ConsoleTab({ tab, onStop, onClose }: ConsoleTabProps) {
+export function ConsoleTab({ tab, onStop, onClose, onRerun }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -51,6 +52,17 @@ export function ConsoleTab({ tab, onStop, onClose }: ConsoleTabProps) {
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.15)')}
             >
               <Square size={12} /> Stop
+            </button>
+          )}
+          {tab.status !== 'running' && (
+            <button
+              onClick={() => onRerun(tab.process_id)}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
+              style={{ backgroundColor: 'rgba(74,222,128,.15)', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.25)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.15)')}
+            >
+              <Play size={12} fill="#4ade80" /> Rerun
             </button>
           )}
           <button

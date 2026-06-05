@@ -72,6 +72,7 @@ export interface LogLine {
 
 export interface ProcessTab {
   process_id: string;
+  project_id: string;
   project_name: string;
   config_name: string;
   status: 'running' | 'stopped' | 'error';

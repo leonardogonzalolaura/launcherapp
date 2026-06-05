@@ -190,6 +190,7 @@ function App() {
       const info = await spawnProjectCommand(selectedProject.id, configName);
       const newTab: ProcessTab = {
         process_id: info.id,
+        project_id: selectedProject.id,
         project_name: info.project_name,
         config_name: info.config_name,
         status: 'running',
@@ -197,6 +198,31 @@ function App() {
         started_at: info.started_at,
       };
       setProcessTabs(prev => [...prev, newTab]);
+      setActiveTabId(info.id);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const handleRerun = async (processId: string) => {
+    const tabToRerun = processTabs.find(t => t.process_id === processId);
+    if (!tabToRerun) return;
+
+    try {
+      const info = await spawnProjectCommand(tabToRerun.project_id, tabToRerun.config_name);
+      setProcessTabs(prev =>
+        prev.map(tab =>
+          tab.process_id === processId
+            ? {
+                ...tab,
+                process_id: info.id,
+                status: 'running',
+                logs: [],
+                started_at: info.started_at,
+              }
+            : tab
+        )
+      );
       setActiveTabId(info.id);
     } catch (e: any) {
       console.error(e);
@@ -522,6 +548,7 @@ function App() {
               tab={activeTab}
               onStop={handleStop}
               onClose={handleCloseTab}
+              onRerun={handleRerun}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center flex-col gap-4" style={{ color: '#3d3f60' }}>
