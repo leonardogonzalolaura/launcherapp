@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Square, X, Play } from 'lucide-react';
+import { Square, X, Play, Trash } from 'lucide-react';
 import { ProcessTab, LogLine } from '../types';
 
 interface ConsoleTabProps {
@@ -8,9 +8,10 @@ interface ConsoleTabProps {
   onStop: (processId: string) => void;
   onClose: (processId: string) => void;
   onRerun: (processId: string) => void;
+  onClear: (processId: string) => void;
 }
 
-export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun }: ConsoleTabProps) {
+export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onClear  }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,6 +29,12 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun }: Con
   };
 
   const statusColor = tab.status === 'running' ? '#4ade80' : tab.status === 'error' ? '#f87171' : '#555878';
+  
+  const handleClear = () => {
+    if (tab.logs.length > 0) {
+      onClear(tab.process_id);
+    }
+  };
 
   return (
     <div className="h-full flex flex-col">
@@ -52,7 +59,24 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun }: Con
             {new Date(tab.started_at).toLocaleTimeString()}
           </span>
         </div>
+
         <div className="flex items-center gap-2">
+          {tab.logs.length > 0 && (
+            <button
+              onClick={handleClear}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
+              style={{ 
+              backgroundColor: 'rgba(100,100,140,.15)', 
+              color: '#8890b0', 
+              border: '1px solid rgba(100,100,140,.3)' 
+              }}
+             onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.25)')}
+             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.15)')}
+            >
+              <Trash size={12} /> Clean
+            </button>
+          )}
+          
           {tab.status === 'running' && (
             <button
               onClick={() => onStop(tab.process_id)}

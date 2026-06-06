@@ -10,6 +10,7 @@ import { UnlistenFn } from '@tauri-apps/api/event';
 import { CustomCommandModal } from './components/CustomCommandModal';
 import { ConsoleTab } from './components/ConsoleTab';
 import { CommandButton } from './components/CommandButton';
+import { Sidebar } from './components/Sidebar';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -205,6 +206,15 @@ function App() {
     }
   };
 
+const handleClearLogs = (processId: string) => {
+  setProcessTabs(prev =>
+    prev.map(tab =>
+      tab.process_id === processId
+        ? { ...tab, logs: [] }  // Limpia los logs
+        : tab
+    )
+  );
+};
   // ─── Execute ─────────────────────────────────────────────────────────────
   const handleExecute = async (configName: string) => {
     if (!selectedProject) return;
@@ -338,11 +348,6 @@ function App() {
   };
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
-  const getProjectIcon = (type: string) => {
-    const icons: Record<string, string> = { Python: '🐍', Scala: '🦭', CSharp: '🎯', React: '⚛️' };
-    return icons[type] || '📁';
-  };
-
   const isRunCmd = (name: string) => ['run', 'dev', 'start'].includes(name);
   const isBuildCmd = (name: string) => ['build', 'compile'].includes(name);
   const isCustomCmd = (name: string) => !isRunCmd(name) && !isBuildCmd(name);
@@ -354,76 +359,6 @@ function App() {
 
       {/* ─── Navbar ──────────────────────────────────────────────────────── */}
       <div className="h-13 min-h-[52px] px-5 flex items-center justify-between gap-4" style={{ backgroundColor: '#10101c', borderBottom: '1px solid #1e1e38' }}>
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <span className="text-xl">🚀</span>
-          <span className="font-bold text-sm tracking-wide" style={{ color: '#a0a8ff' }}>Launcher</span>
-        </div>
-
-        {/* Project Dropdown */}
-        <div className="relative flex-1 max-w-xs">
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm"
-            style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
-          >
-            {selectedProject ? (
-              <>
-                <span>{getProjectIcon(selectedProject.project_type)}</span>
-                <div className="flex-1 text-left min-w-0">
-                  <div className="font-medium truncate">{selectedProject.name}</div>
-                </div>
-                <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: '#252540', color: '#6e7fff' }}>
-                  {selectedProject.project_type}
-                </span>
-              </>
-            ) : (
-              <span style={{ color: '#555878' }}>Select project…</span>
-            )}
-            <ChevronDown size={14} style={{ color: '#555878', flexShrink: 0 }} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {isDropdownOpen && projects.length > 0 && (
-            <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
-              {projects.map(p => (
-                <div
-                  key={p.id}
-                  className="w-full flex items-center justify-between transition-colors"
-                  style={{ backgroundColor: selectedProject?.id === p.id ? '#1f1f35' : 'transparent' }}
-                  onMouseEnter={e => {
-                    if (selectedProject?.id !== p.id) {
-                      e.currentTarget.style.backgroundColor = '#1f1f35';
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (selectedProject?.id !== p.id) {
-                      e.currentTarget.style.backgroundColor = 'transparent';
-                    }
-                  }}
-                >
-                  <button
-                    onClick={() => { setSelectedProject(p); setIsDropdownOpen(false); }}
-                    className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left truncate"
-                  >
-                    <span>{getProjectIcon(p.project_type)}</span>
-                    <span className="flex-1 truncate">{p.name}</span>
-                    <span className="text-xs mr-1" style={{ color: '#555878' }}>{p.project_type}</span>
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveProject(p.id);
-                    }}
-                    className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a]"
-                    title="Quitar proyecto"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Console Tabs in navbar */}
         <div className="flex items-center gap-1 flex-1 overflow-x-auto min-w-0">
           {processTabs.map(tab => {
@@ -463,111 +398,29 @@ function App() {
       </div>
 
       {/* ─── Main Layout ─────────────────────────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden">
-
-        {/* Sidebar */}
-        <div className="w-72 flex-shrink-0 overflow-y-auto flex flex-col" style={{ backgroundColor: '#10101c', borderRight: '1px solid #1e1e38' }}>
-          {selectedProject ? (
-            <>
-              {/* Project Path */}
-              <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-                <div className="text-xs font-semibold uppercase mb-2" style={{ color: '#3d3f60' }}>Project</div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-2xl">{getProjectIcon(selectedProject.project_type)}</span>
-                  <div>
-                    <div className="font-semibold text-sm">{selectedProject.name}</div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs" style={{ color: '#555878' }}>{selectedProject.project_type}</span>
-                      {gitBranches[selectedProject.id] && (
-                        <span
-                          className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono"
-                          style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}
-                          title="Rama git actual"
-                        >
-                          ⎇ {gitBranches[selectedProject.id]}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="text-xs font-mono truncate p-2 rounded" style={{ color: '#555878', backgroundColor: '#0d0d14', border: '1px solid #1e1e38' }}>
-                  {selectedProject.path}
-                </div>
-              </div>
-
-              {/* Run Commands */}
-              {selectedProject.configurations.filter(c => isRunCmd(c.name)).length > 0 && (
-                <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-                  <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
-                    <Play size={11} /> Run
-                  </div>
-                  <div className="space-y-1.5">
-                    {selectedProject.configurations
-                      .map((c, i) => ({ c, i }))
-                      .filter(({ c }) => isRunCmd(c.name))
-                      .map(({ c, i }) => (
-                        <CommandButton key={i} config={c} configIndex={i} onRun={handleExecute} onEdit={(cfg, idx) => { setEditingConfig({ config: cfg, index: idx }); setShowCustomModal(true); }} onDelete={handleDeleteConfig} icon="▶️" />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Build Commands */}
-              {selectedProject.configurations.filter(c => isBuildCmd(c.name)).length > 0 && (
-                <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-                  <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
-                    <Hammer size={11} /> Build
-                  </div>
-                  <div className="space-y-1.5">
-                    {selectedProject.configurations
-                      .map((c, i) => ({ c, i }))
-                      .filter(({ c }) => isBuildCmd(c.name))
-                      .map(({ c, i }) => (
-                        <CommandButton key={i} config={c} configIndex={i} onRun={handleExecute} onEdit={(cfg, idx) => { setEditingConfig({ config: cfg, index: idx }); setShowCustomModal(true); }} onDelete={handleDeleteConfig} icon="🔨" />
-                      ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Custom Commands */}
-              <div className="p-4 flex-1" style={{ borderBottom: '1px solid #1e1e38' }}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-semibold uppercase flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
-                    <Settings size={11} /> Custom
-                  </div>
-                  <button
-                    onClick={() => { setEditingConfig(null); setShowCustomModal(true); }}
-                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors"
-                    style={{ color: '#6e7fff' }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1a1a2e')}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
-                  >
-                    <PlusCircle size={11} /> Add
-                  </button>
-                </div>
-                <div className="space-y-1.5">
-                  {selectedProject.configurations
-                    .map((c, i) => ({ c, i }))
-                    .filter(({ c }) => isCustomCmd(c.name))
-                    .map(({ c, i }) => (
-                      <CommandButton key={i} config={c} configIndex={i} onRun={handleExecute} onEdit={(cfg, idx) => { setEditingConfig({ config: cfg, index: idx }); setShowCustomModal(true); }} onDelete={handleDeleteConfig} icon="⚙️" />
-                    ))}
-                  {selectedProject.configurations.filter(c => isCustomCmd(c.name)).length === 0 && (
-                    <div className="text-xs text-center py-4" style={{ color: '#3d3f60' }}>
-                      No custom commands yet
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          ) : (
-            <div className="flex-1 flex items-center justify-center flex-col gap-3 p-8 text-center" style={{ color: '#3d3f60' }}>
-              <FolderOpen size={36} className="opacity-40" />
-              <p className="text-sm">No project selected</p>
-              <p className="text-xs">Click "Add Project" to get started</p>
-            </div>
-          )}
-        </div>
+<div className="flex-1 flex overflow-hidden">
+      <Sidebar
+        projects={projects}
+        selectedProject={selectedProject}
+        isLoading={isLoading}
+        gitBranches={gitBranches}
+        onSelectProject={(project) => {
+          setSelectedProject(project);
+          setIsDropdownOpen(false);
+        }}
+        onRemoveProject={handleRemoveProject}
+        onAddProject={handleAddProject}
+        onExecuteCommand={handleExecute}
+        onEditCommand={(config, index) => {
+          setEditingConfig({ config, index });
+          setShowCustomModal(true);
+        }}
+        onDeleteCommand={handleDeleteConfig}
+        onOpenCustomModal={(editingConfig) => {
+          setEditingConfig(editingConfig);
+          setShowCustomModal(true);
+        }}
+      />
 
         {/* Console Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -579,6 +432,7 @@ function App() {
               onStop={handleStop}
               onClose={handleCloseTab}
               onRerun={handleRerun}
+              onClear={handleClearLogs}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center flex-col gap-4" style={{ color: '#3d3f60' }}>

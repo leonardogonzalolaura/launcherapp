@@ -23,7 +23,7 @@ const getOutputIcon = (type: Output['output_type']) => {
 
 const getOutputStyle = (type: Output['output_type'], content: string) => {
   if (type === 'stderr') return 'text-red-400';
-  if (type === 'stdout') return 'text-green-300';
+  if (type === 'stdout') return 'text-white-300';
   if (content.includes('✅')) return 'text-green-400';
   if (content.includes('❌')) return 'text-red-400';
   return 'text-gray-300';
