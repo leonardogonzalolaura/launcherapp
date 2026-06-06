@@ -78,8 +78,13 @@ export function Sidebar({
 
   return (
     <div 
-      className={`flex-shrink-0 overflow-y-auto flex flex-col transition-all duration-300 relative ${isCollapsed ? 'w-12' : 'w-80.5'}`}
-      style={{ backgroundColor: '#10101c', borderRight: '1px solid #1e1e38' }}
+      className={`flex-shrink-0 flex flex-col transition-all duration-300 relative ${isCollapsed ? 'w-12' : 'w-72'}`}
+      style={{ 
+        backgroundColor: '#10101c', 
+        borderRight: '1px solid #1e1e38',
+        width: isCollapsed ? '3rem' : '18rem',
+        overflow: 'hidden'  // ← Esto evita el scroll en el contenedor principal
+      }}
     >
       {/* Botón colapsar/expandir */}
       <button
@@ -91,7 +96,8 @@ export function Sidebar({
       </button>
 
       {!isCollapsed ? (
-        <>
+        // Versión expandida - con scroll solo aquí
+        <div className="flex-1 overflow-y-auto">
           {/* Project Info */}
           <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: '#3d3f60' }}>Project</div>
@@ -99,10 +105,10 @@ export function Sidebar({
             <div className="relative mb-2">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm"
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden"
                 style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
               >
-                <span>{getProjectIcon(selectedProject.project_type)}</span>
+                <span className="flex-shrink-0">{getProjectIcon(selectedProject.project_type)}</span>
                 <div className="flex-1 text-left min-w-0">
                   <div className="font-medium truncate">{selectedProject.name}</div>
                 </div>
@@ -118,15 +124,15 @@ export function Sidebar({
                     <div key={p.id} className="w-full flex items-center justify-between">
                       <button
                         onClick={() => { onSelectProject(p); setIsDropdownOpen(false); }}
-                        className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left truncate hover:bg-[#1f1f35]"
+                        className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left truncate hover:bg-[#1f1f35] overflow-hidden"
                       >
-                        <span>{getProjectIcon(p.project_type)}</span>
+                        <span className="flex-shrink-0">{getProjectIcon(p.project_type)}</span>
                         <span className="flex-1 truncate">{p.name}</span>
-                        <span className="text-xs mr-1" style={{ color: '#555878' }}>{p.project_type}</span>
+                        <span className="text-xs mr-1 flex-shrink-0" style={{ color: '#555878' }}>{p.project_type}</span>
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); onRemoveProject(p.id); }}
-                        className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a]"
+                        className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a] flex-shrink-0"
                       >
                         <Trash2 size={14} />
                       </button>
@@ -136,15 +142,10 @@ export function Sidebar({
               )}
             </div>
 
-            {/* Path 
-            <div className="text-xs font-mono truncate p-2 rounded" style={{ color: '#555878', backgroundColor: '#0d0d14', border: '1px solid #1e1e38' }}>
-              {selectedProject.path}
-            </div>
-            */}
             {/* Git branch */}
             {gitBranches[selectedProject.id] && (
               <div className="mt-2">
-                <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit" style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}>
+                <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit max-w-full truncate" style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}>
                   🍃 {gitBranches[selectedProject.id]}
                 </span>
               </div>
@@ -207,7 +208,7 @@ export function Sidebar({
               </div>
               <button
                 onClick={() => onOpenCustomModal(null)}
-                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors"
+                className="flex items-center gap-1 text-xs px-2 py-0.5 rounded transition-colors flex-shrink-0"
                 style={{ color: '#6e7fff' }}
               >
                 <PlusCircle size={11} /> Add
@@ -234,31 +235,74 @@ export function Sidebar({
               )}
             </div>
           </div>
-        </>
+        </div>
       ) : (
-        /* Versión colapsada - solo íconos */
-        <div className="flex flex-col items-center gap-4 mt-8">
+        /* Versión colapsada - SIN SCROLL, todo visible */
+        <div className="flex flex-col items-center py-4 gap-3" style={{ overflow: 'visible' }}>
+          {/* Botón Add Project */}
           <button
             onClick={onAddProject}
-            className="p-2 rounded hover:bg-[#1f1f35] transition-colors"
+            className="mt-6 p-2 rounded hover:bg-[#1f1f35] transition-colors"
             title="Add project"
           >
             <Plus size={18} />
           </button>
-          {selectedProject && (
-            <>
-              <div className="text-2xl">{getProjectIcon(selectedProject.project_type)}</div>
-              {selectedProject.configurations.slice(0, 3).map((c, i) => (
-                <button
-                  key={i}
-                  onClick={() => onExecuteCommand(c.name)}
-                  className="p-2 rounded hover:bg-[#1f1f35] transition-colors"
-                  title={c.name}
-                >
-                  {isRunCmd(c.name) ? <Play size={16} /> : isBuildCmd(c.name) ? <Hammer size={16} /> : <Settings size={16} />}
-                </button>
-              ))}
-            </>
+          
+          {/* Botón Add Custom Command */}
+          <button
+            onClick={() => onOpenCustomModal(null)}
+            className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
+            title="Add custom command"
+          >
+            <PlusCircle size={18} style={{ color: '#6e7fff' }} />
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#6e7fff' }}>
+              Add command
+            </span>
+          </button>
+          
+          {/* Separador */}
+          <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
+          
+          {/* Icono del proyecto */}
+          <div className="text-2xl">{getProjectIcon(selectedProject.project_type)}</div>
+          
+          {/* Rama git (si existe) - versión compacta */}
+          {gitBranches[selectedProject.id] && (
+            <div className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center"
+                 style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
+                 title={gitBranches[selectedProject.id]}>
+              🍃
+            </div>
+          )}
+          
+          {/* Separador */}
+          <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
+          
+          {/* Comandos rápidos - limitados a 4 para no desbordar */}
+          {selectedProject.configurations.slice(0, 4).map((c, i) => (
+            <button
+              key={i}
+              onClick={() => onExecuteCommand(c.name)}
+              className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
+              title={c.name}
+            >
+              {isRunCmd(c.name) ? <Play size={16} style={{ color: '#4ade80' }} /> : 
+               isBuildCmd(c.name) ? <Hammer size={16} style={{ color: '#fbbf24' }} /> : 
+               <Settings size={16} style={{ color: '#6e7fff' }} />}
+              
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+                {c.name}
+              </span>
+            </button>
+          ))}
+          
+          {/* Indicador de más comandos */}
+          {selectedProject.configurations.length > 4 && (
+            <div className="text-[10px] px-1 py-0.5 rounded mt-1" style={{ backgroundColor: '#1a1a2e', color: '#555878' }}>
+              +{selectedProject.configurations.length - 4}
+            </div>
           )}
         </div>
       )}
