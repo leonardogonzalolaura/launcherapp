@@ -85,6 +85,45 @@ const isSuccessLine = (content: string): boolean => {
   return successPatterns.some(pattern => lowerContent.includes(pattern));
 };
 
+// Versión alternativa con window.open
+const renderContentWithLinks = (content: string) => {
+  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+|www\.[^\s<>"{}|\\^`[\]]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|dev|app|co|me|xyz|info|online|tech|site|cloud|github\.io|gitlab\.io|vercel\.app|netlify\.app|npmjs\.com)[^\s<>"{}|\\^`[\]]*)/gi;
+  
+  const parts = content.split(urlRegex);
+  const matches = content.match(urlRegex) || [];
+  let matchIndex = 0;
+  
+  return parts.map((part, i) => {
+    if (matches[matchIndex] && part === matches[matchIndex]) {
+      let url = part;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
+      }
+      matchIndex++;
+      return (
+        <button
+          key={i}
+          onClick={(e) => {
+            e.stopPropagation();
+            window.open(url, '_blank', 'noopener,noreferrer');
+          }}
+          className="hover:underline cursor-pointer inline-flex items-center gap-0.5 rounded px-0.5 transition-colors"
+          style={{ color: '#60a5fa', background: 'none', border: 'none', padding: '0 2px' }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(96,165,250,.15)')}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+          title={`Click to open: ${url}`}
+        >
+          {part}
+          <svg className="w-2.5 h-2.5 inline-block flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </button>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+};
+
 export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onClear }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -164,17 +203,29 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
           {(errorCount > 0 || warningCount > 0 || successCount > 0) && (
             <div className="flex items-center gap-2 ml-2 text-xs">
               {errorCount > 0 && (
-                <span style={{ color: '#f87171' }} className="flex items-center gap-0.5">
+                <span 
+                  style={{ color: '#f87171' }} 
+                  className="flex items-center gap-0.5 cursor-help"
+                  title={`${errorCount} error(es) encontrado(s)`}
+                >
                   🔴 {errorCount}
                 </span>
               )}
               {warningCount > 0 && (
-                <span style={{ color: '#fbbf24' }} className="flex items-center gap-0.5">
+                <span 
+                  style={{ color: '#fbbf24' }} 
+                  className="flex items-center gap-0.5 cursor-help"
+                  title={`${warningCount} advertencia(s)`}
+                >
                   🟡 {warningCount}
                 </span>
               )}
               {successCount > 0 && (
-                <span style={{ color: '#4ade80' }} className="flex items-center gap-0.5">
+                <span 
+                  style={{ color: '#4ade80' }} 
+                  className="flex items-center gap-0.5 cursor-help"
+                  title={`${successCount} éxito(s)`}
+                >
                   🟢 {successCount}
                 </span>
               )}
@@ -316,17 +367,25 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
                 key={line.id} 
                 className={`flex gap-3 mb-0.5 leading-5 hover:bg-gray-800/20 rounded transition-colors ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
               >
-                {/* Número de línea */}
-                <span className="flex-shrink-0 select-none text-right w-8" style={{ color: '#333558' }}>
+                {/* Número de línea con tooltip */}
+                <span 
+                  className="flex-shrink-0 select-none text-right w-8 cursor-help" 
+                  style={{ color: '#333558' }}
+                  title={`Línea ${idx + 1}${isError ? ' - Contiene un error' : isWarning ? ' - Contiene una advertencia' : ''}`}
+                >
                   {idx + 1}
                 </span>
-                {/* Timestamp */}
-                <span className="flex-shrink-0 select-none" style={{ color: '#333558' }}>
+                {/* Timestamp con tooltip */}
+                <span 
+                  className="flex-shrink-0 select-none cursor-help" 
+                  style={{ color: '#333558' }}
+                  title={new Date(line.timestamp).toLocaleString()}
+                >
                   {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-                {/* Contenido */}
+                {/* Contenido con URLs clickeables */}
                 <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
-                  {line.content}
+                  {renderContentWithLinks(line.content)}
                 </span>
               </div>
             );
