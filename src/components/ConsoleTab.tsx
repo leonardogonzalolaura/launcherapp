@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import { Square, X, Play, Trash } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Square, X, Play, Trash, Copy, ArrowDown, Filter } from 'lucide-react';
 import { ProcessTab, LogLine } from '../types';
 
 interface ConsoleTabProps {
@@ -15,7 +15,6 @@ interface ConsoleTabProps {
 const isWarningLine = (content: string): boolean => {
   const lowerContent = content.toLowerCase();
   
-  // Patrones de warnings (específicos)
   const warningPatterns = [
     'npm warn',
     'yarn warn',
@@ -35,22 +34,18 @@ const isWarningLine = (content: string): boolean => {
 
 // Detectar ERRORES (universal)
 const isErrorLine = (content: string, type: string): boolean => {
-  // Si es stderr, es error
   if (type === 'stderr') return true;
   
   const lowerContent = content.toLowerCase();
   
-  // Si es warning, NO es error
   if (isWarningLine(content)) {
     return false;
   }
   
-  // Patrones de error UNIVERSALES (funcionan para C#, Java, Python, Node, etc.)
   const errorPatterns = [
-    // Palabras clave de error
-    ' error ',      // espacio antes y después para evitar "npm error"?
+    ' error ',
     'error:',
-    ': error',      // Patrón de C#: "error CS0246"
+    ': error',
     'failed:',
     'exception:',
     'fatal:',
@@ -63,24 +58,21 @@ const isErrorLine = (content: string, type: string): boolean => {
     'syntax error',
     'referenceerror',
     'typeerror',
-    // Códigos de error específicos
-    'cs1', 'cs2', 'cs3', 'cs4', 'cs5', 'cs6', 'cs7', 'cs8', 'cs9',  // C# error codes
-    'java.lang.',   // Java exceptions
-    'traceback',    // Python
-    'exception in thread', // Java
-    'at sun.',      // Java stack trace
-    'at java.',     // Java stack trace
+    'cs1', 'cs2', 'cs3', 'cs4', 'cs5', 'cs6', 'cs7', 'cs8', 'cs9',
+    'java.lang.',
+    'traceback',
+    'exception in thread',
+    'at sun.',
+    'at java.',
   ];
   
-  // Verificar si el contenido contiene "error" como palabra completa
   const hasErrorWord = /\berror\b/i.test(lowerContent);
   if (hasErrorWord) return true;
   
-  // Verificar otros patrones
   return errorPatterns.some(pattern => lowerContent.includes(pattern));
 };
 
-// Detectar líneas de éxito (build success, etc.)
+// Detectar líneas de éxito
 const isSuccessLine = (content: string): boolean => {
   const lowerContent = content.toLowerCase();
   const successPatterns = [
@@ -95,24 +87,48 @@ const isSuccessLine = (content: string): boolean => {
 
 export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onClear }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warning' | 'success'>('all');
+  const [showFilterMenu, setShowFilterMenu] = useState(false);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [tab.logs]);
+    if (autoScroll) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [tab.logs, autoScroll]);
 
   const getLineColor = (line: LogLine) => {
     const isWarning = isWarningLine(line.content);
     const isError = isErrorLine(line.content, line.output_type);
     const isSuccess = isSuccessLine(line.content);
     
-    // Prioridad: Warning > Error > Success > Info
-    if (isWarning) return '#fbbf24';      // 🟡 AMARILLO para warnings
-    if (isError) return '#f87171';        // 🔴 ROJO para errores
-    if (isSuccess) return '#a8ffb0';      // 🟢 VERDE para éxito
-    if (line.output_type === 'stdout') return '#d4d4d8';  // ⚪ GRIS para salida normal
+    if (isWarning) return '#fbbf24';
+    if (isError) return '#f87171';
+    if (isSuccess) return '#a8ffb0';
+    if (line.output_type === 'stdout') return '#d4d4d8';
     if (line.output_type === 'error') return '#f87171';
-    if (line.output_type === 'info') return '#60a5fa';    // 🔵 AZUL para info
+    if (line.output_type === 'info') return '#60a5fa';
     return '#d4d4d8';
+  };
+
+  // Filtrar logs según selección
+  const filteredLogs = tab.logs.filter(line => {
+    if (logFilter === 'all') return true;
+    if (logFilter === 'error') return isErrorLine(line.content, line.output_type);
+    if (logFilter === 'warning') return isWarningLine(line.content);
+    if (logFilter === 'success') return isSuccessLine(line.content);
+    return true;
+  });
+
+  // Contar estadísticas
+  const errorCount = tab.logs.filter(l => isErrorLine(l.content, l.output_type)).length;
+  const warningCount = tab.logs.filter(l => isWarningLine(l.content)).length;
+  const successCount = tab.logs.filter(l => isSuccessLine(l.content)).length;
+
+  // Copiar todos los logs
+  const copyAllLogs = async () => {
+    const content = filteredLogs.map(log => log.content).join('\n');
+    await navigator.clipboard.writeText(content);
   };
 
   const statusColor = tab.status === 'running' ? '#4ade80' : tab.status === 'error' ? '#f87171' : '#555878';
@@ -127,6 +143,7 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
     <div className="h-full flex flex-col">
       {/* Tab header */}
       <div className="flex items-center justify-between px-4 py-2 flex-shrink-0" style={{ backgroundColor: '#13131f', borderBottom: '1px solid #252540' }}>
+        {/* Left side - Info del proyecto */}
         <div className="flex items-center gap-3">
           <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
           <span className="font-mono text-sm font-medium">{tab.project_name}</span>
@@ -142,21 +159,94 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
               🌿 {liveGitBranch ?? tab.git_branch}
             </span>
           )}
-          <span className="text-xs" style={{ color: '#555878' }}>
-            {new Date(tab.started_at).toLocaleTimeString()}
-          </span>
+          
+          {/* Estadísticas en tiempo real */}
+          {(errorCount > 0 || warningCount > 0 || successCount > 0) && (
+            <div className="flex items-center gap-2 ml-2 text-xs">
+              {errorCount > 0 && (
+                <span style={{ color: '#f87171' }} className="flex items-center gap-0.5">
+                  🔴 {errorCount}
+                </span>
+              )}
+              {warningCount > 0 && (
+                <span style={{ color: '#fbbf24' }} className="flex items-center gap-0.5">
+                  🟡 {warningCount}
+                </span>
+              )}
+              {successCount > 0 && (
+                <span style={{ color: '#4ade80' }} className="flex items-center gap-0.5">
+                  🟢 {successCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
+        {/* Right side - Botones de acción */}
         <div className="flex items-center gap-2">
+          {/* Botón de filtro */}
+          <div className="relative">
+            <button
+              onClick={() => setShowFilterMenu(!showFilterMenu)}
+              className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
+              style={{ color: '#555878' }}
+              title="Filter logs"
+            >
+              <Filter size={12} />
+            </button>
+            {showFilterMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowFilterMenu(false)} />
+                <div className="absolute right-0 mt-1 w-28 rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
+                  {[
+                    { value: 'all', label: '📋 All', color: '#8890b0' },
+                    { value: 'error', label: '🔴 Errors', color: '#f87171' },
+                    { value: 'warning', label: '🟡 Warnings', color: '#fbbf24' },
+                    { value: 'success', label: '🟢 Success', color: '#4ade80' }
+                  ].map(filter => (
+                    <button
+                      key={filter.value}
+                      onClick={() => { setLogFilter(filter.value as any); setShowFilterMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#1f1f35] transition-colors ${logFilter === filter.value ? 'bg-[#1f1f35]' : ''}`}
+                      style={{ color: filter.color }}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Botón copiar todo */}
+          {filteredLogs.length > 0 && (
+            <button
+              onClick={copyAllLogs}
+              className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
+              style={{ backgroundColor: 'rgba(59,130,246,.15)', color: '#60a5fa', border: '1px solid rgba(59,130,246,.3)' }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(59,130,246,.25)')}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(59,130,246,.15)')}
+            >
+              <Copy size={12} /> Copy
+            </button>
+          )}
+
+          {/* Botón auto-scroll toggle */}
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`p-1 rounded transition-colors hover:bg-[#1f1f35] ${!autoScroll ? 'opacity-50' : ''}`}
+            style={{ color: '#555878' }}
+            title={autoScroll ? 'Auto-scroll on' : 'Auto-scroll off'}
+          >
+            <ArrowDown size={12} />
+          </button>
+
+          {/* Botón limpiar consola */}
           {tab.logs.length > 0 && (
             <button
               onClick={handleClear}
               className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
-              style={{ 
-                backgroundColor: 'rgba(100,100,140,.15)', 
-                color: '#8890b0', 
-                border: '1px solid rgba(100,100,140,.3)' 
-              }}
+              style={{ backgroundColor: 'rgba(100,100,140,.15)', color: '#8890b0', border: '1px solid rgba(100,100,140,.3)' }}
               onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.25)')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.15)')}
             >
@@ -164,6 +254,7 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
             </button>
           )}
           
+          {/* Botón Stop (si está corriendo) */}
           {tab.status === 'running' && (
             <button
               onClick={() => onStop(tab.process_id)}
@@ -175,6 +266,8 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
               <Square size={12} /> Stop
             </button>
           )}
+          
+          {/* Botón Rerun (si está detenido) */}
           {tab.status !== 'running' && (
             <button
               onClick={() => onRerun(tab.process_id)}
@@ -186,9 +279,11 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
               <Play size={12} /> Rerun
             </button>
           )}
+          
+          {/* Botón cerrar tab */}
           <button
             onClick={() => onClose(tab.process_id)}
-            className="p-1 rounded transition-colors"
+            className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
             style={{ color: '#555878' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#e2e4f0')}
             onMouseLeave={e => (e.currentTarget.style.color = '#555878')}
@@ -200,16 +295,18 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
 
       {/* Log output */}
       <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" style={{ backgroundColor: '#080810' }}>
-        {tab.logs.length === 0 ? (
+        {filteredLogs.length === 0 ? (
           <div className="flex items-center justify-center h-full text-center" style={{ color: '#3d3f60' }}>
             <div className="flex flex-col items-center gap-2">
               <Trash size={24} className="opacity-30" />
-              <p className="text-sm">Console is clean</p>
-              <p className="text-xs">Run a command to see output</p>
+              <p className="text-sm">No logs to display</p>
+              {logFilter !== 'all' && (
+                <p className="text-xs">Try changing the filter</p>
+              )}
             </div>
           </div>
         ) : (
-          tab.logs.map(line => {
+          filteredLogs.map((line, idx) => {
             const isWarning = isWarningLine(line.content);
             const isError = isErrorLine(line.content, line.output_type);
             const lineColor = getLineColor(line);
@@ -217,12 +314,18 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
             return (
               <div 
                 key={line.id} 
-                className={`flex gap-3 mb-0.5 leading-5 ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
+                className={`flex gap-3 mb-0.5 leading-5 hover:bg-gray-800/20 rounded transition-colors ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
               >
+                {/* Número de línea */}
+                <span className="flex-shrink-0 select-none text-right w-8" style={{ color: '#333558' }}>
+                  {idx + 1}
+                </span>
+                {/* Timestamp */}
                 <span className="flex-shrink-0 select-none" style={{ color: '#333558' }}>
                   {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-                <span className="whitespace-pre-wrap break-all" style={{ color: lineColor }}>
+                {/* Contenido */}
+                <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
                   {line.content}
                 </span>
               </div>
