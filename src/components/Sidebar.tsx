@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Plus, FolderOpen, ChevronDown, Play, Hammer,
-  Trash2, Settings, PlusCircle, ChevronRight, Loader2, ChevronLeft
+  Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft
 } from 'lucide-react';
 import { Project, ProjectConfig } from '../types';
 import { CommandButton } from './CommandButton';
@@ -9,7 +9,6 @@ import { CommandButton } from './CommandButton';
 interface SidebarProps {
   projects: Project[];
   selectedProject: Project | null;
-  isLoading: boolean;
   gitBranches: Record<string, string | null>;
   onSelectProject: (project: Project) => void;
   onRemoveProject: (id: string) => void;
@@ -32,7 +31,7 @@ const isBuildCmd = (name: string) => ['build', 'compile'].includes(name);
 export function Sidebar({
   projects,
   selectedProject,
-  isLoading,
+ // isLoading,
   gitBranches,
   onSelectProject,
   onRemoveProject,
@@ -269,12 +268,12 @@ export function Sidebar({
           
           {/* Rama git (si existe) - versión compacta */}
           {gitBranches[selectedProject.id] && (
-            <div className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center"
-                 style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
-                 title={gitBranches[selectedProject.id]}>
-              🍃
-            </div>
-          )}
+  <div className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center"
+       style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
+       title={gitBranches[selectedProject.id] || ''}>
+    🍃
+  </div>
+)}
           
           {/* Separador */}
           <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />

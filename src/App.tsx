@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  Plus, FolderOpen, ChevronDown, Terminal, Play, Hammer,
-  Trash2, X, Settings, PlusCircle, ChevronRight, Loader2
+  Plus, Terminal, 
+  Trash2, X, ChevronRight, Loader2
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
 import { UnlistenFn } from '@tauri-apps/api/event';
 import { CustomCommandModal } from './components/CustomCommandModal';
 import { ConsoleTab } from './components/ConsoleTab';
-import { CommandButton } from './components/CommandButton';
 import { Sidebar } from './components/Sidebar';
 
 let logIdCounter = 0;
@@ -56,9 +55,9 @@ const saveSelectedProjectIdToStorage = (projectId: string | null) => {
 function App() {
   const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [processTabs, setProcessTabs] = useState<ProcessTab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [, setIsDropdownOpen] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [editingConfig, setEditingConfig] = useState<{ config: ProjectConfig; index: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -348,10 +347,6 @@ const handleClearLogs = (processId: string) => {
   };
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
-  const isRunCmd = (name: string) => ['run', 'dev', 'start'].includes(name);
-  const isBuildCmd = (name: string) => ['build', 'compile'].includes(name);
-  const isCustomCmd = (name: string) => !isRunCmd(name) && !isBuildCmd(name);
-
   const activeTab = processTabs.find(t => t.process_id === activeTabId) ?? null;
 
   return (
@@ -402,7 +397,7 @@ const handleClearLogs = (processId: string) => {
       <Sidebar
         projects={projects}
         selectedProject={selectedProject}
-        isLoading={isLoading}
+       // isLoading={isLoading}
         gitBranches={gitBranches}
         onSelectProject={(project) => {
           setSelectedProject(project);
