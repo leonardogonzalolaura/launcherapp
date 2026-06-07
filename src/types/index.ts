@@ -79,4 +79,5 @@ export interface ProcessTab {
   logs: LogLine[];
   started_at: string;
   git_branch?: string | null;
+  project_type?: string; 
 }
