@@ -160,17 +160,20 @@ export function Sidebar({
               <div className="space-y-1.5">
                 {selectedProject.configurations
                   .filter(c => isRunCmd(c.name))
-                  .map((c, i) => (
-                    <CommandButton 
-                      key={i} 
-                      config={c} 
-                      configIndex={i} 
-                      onRun={onExecuteCommand} 
-                      onEdit={onEditCommand} 
-                      onDelete={onDeleteCommand} 
-                      icon="▶️" 
-                    />
-                  ))}
+                  .map((c) => {
+                    const realIndex = selectedProject.configurations.indexOf(c);
+                    return (
+                      <CommandButton 
+                        key={c.name} 
+                        config={c} 
+                        configIndex={realIndex} 
+                        onRun={onExecuteCommand} 
+                        onEdit={onEditCommand} 
+                        onDelete={onDeleteCommand} 
+                        icon="▶️" 
+                      />
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -184,17 +187,20 @@ export function Sidebar({
               <div className="space-y-1.5">
                 {selectedProject.configurations
                   .filter(c => isBuildCmd(c.name))
-                  .map((c, i) => (
-                    <CommandButton 
-                      key={i} 
-                      config={c} 
-                      configIndex={i} 
-                      onRun={onExecuteCommand} 
-                      onEdit={onEditCommand} 
-                      onDelete={onDeleteCommand} 
-                      icon="🔨" 
-                    />
-                  ))}
+                  .map((c) => {
+                    const realIndex = selectedProject.configurations.indexOf(c);
+                    return (
+                      <CommandButton 
+                        key={c.name} 
+                        config={c} 
+                        configIndex={realIndex} 
+                        onRun={onExecuteCommand} 
+                        onEdit={onEditCommand} 
+                        onDelete={onDeleteCommand} 
+                        icon="🔨" 
+                      />
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -216,17 +222,20 @@ export function Sidebar({
             <div className="space-y-1.5">
               {selectedProject.configurations
                 .filter(c => !isRunCmd(c.name) && !isBuildCmd(c.name))
-                .map((c, i) => (
-                  <CommandButton 
-                    key={i} 
-                    config={c} 
-                    configIndex={i} 
-                    onRun={onExecuteCommand} 
-                    onEdit={onEditCommand} 
-                    onDelete={onDeleteCommand} 
-                    icon="⚙️" 
-                  />
-                ))}
+                .map((c) => {
+                  const realIndex = selectedProject.configurations.indexOf(c);
+                  return (
+                    <CommandButton 
+                      key={c.name} 
+                      config={c} 
+                      configIndex={realIndex} 
+                      onRun={onExecuteCommand} 
+                      onEdit={onEditCommand} 
+                      onDelete={onDeleteCommand} 
+                      icon="⚙️" 
+                    />
+                  );
+                })}
               {selectedProject.configurations.filter(c => !isRunCmd(c.name) && !isBuildCmd(c.name)).length === 0 && (
                 <div className="text-xs text-center py-4" style={{ color: '#3d3f60' }}>
                   No custom commands yet
