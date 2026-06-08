@@ -5,16 +5,6 @@ interface JsonViewerProps {
   maxPreviewLength?: number;
 }
 
-const getTypeColor = (value: any): string => {
-  if (value === null) return '#fbbf24'; // amarillo para null
-  if (typeof value === 'string') return '#a8ffb0'; // verde para strings
-  if (typeof value === 'number') return '#60a5fa'; // azul para números
-  if (typeof value === 'boolean') return '#c084fc'; // púrpura para booleanos
-  if (Array.isArray(value)) return '#f87171'; // rojo para arrays
-  if (typeof value === 'object') return '#fbbf24'; // amarillo para objetos
-  return '#d4d4d8';
-};
-
 const escapeHtml = (text: string): string => {
   return text
     .replace(/&/g, '&amp;')

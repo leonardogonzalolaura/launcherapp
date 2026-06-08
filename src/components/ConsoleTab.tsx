@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Square, X, Play, Trash, Copy, ArrowDown, Filter } from 'lucide-react';
-import { ProcessTab, LogLine } from '../types';
+import { ProcessTab } from '../types';
 import { JsonViewer, isJsonLine } from './JsonViewer';
 
 interface ConsoleTabProps {
