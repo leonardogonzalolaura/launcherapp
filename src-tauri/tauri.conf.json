@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "launcherapp",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "identifier": "com.leona.launcherapp",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "HorseLauch v.0.1.7",
+        "title": "HorseLauch v.0.1.8",
         "width": 800,
         "height": 600,
         "maximized": true,
