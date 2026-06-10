@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Square, X, Play, Trash, Copy, ArrowDown, Filter } from 'lucide-react';
-import { ProcessTab, LogLine } from '../types';
+import { ProcessTab } from '../types';
+import { JsonViewer, isJsonLine } from './JsonViewer';
 
 interface ConsoleTabProps {
   tab: ProcessTab;
@@ -76,7 +77,11 @@ const isPythonWarning = (content: string): boolean => {
          lower.includes('pendingdeprecationwarning') ||
          lower.includes('runtimewarning') ||
          lower.includes('futurewarning') ||
-         lower.includes('importwarning');
+         lower.includes('importwarning') ||        
+         lower.includes(' - warning - ') ||
+         lower.includes(': warning:') ||
+         lower.includes('[warning]') || 
+         (lower.includes('warning') && !lower.includes('error'));
 };
 
 const isPythonError = (content: string): boolean => {
@@ -92,7 +97,10 @@ const isPythonError = (content: string): boolean => {
          lower.includes('attributeerror') ||
          lower.includes('syntaxerror') ||
          lower.includes('indentationerror') ||
-         lower.includes('nameerror');
+         lower.includes('nameerror') ||
+         lower.includes(' - error - ') ||
+         lower.includes(': error:') ||
+         lower.includes('[error]');
 };
 
 // ─── DETECCIÓN ESPECÍFICA PARA C# / .NET ─────────────────────────────────────
@@ -100,6 +108,10 @@ const isCSharpWarning = (content: string): boolean => {
   const lower = content.toLowerCase();
   return lower.includes('warning cs') ||
          lower.includes('msbuild warning') ||
+         lower.includes('warn:') ||
+         lower.includes('[warn]') ||
+         lower.includes('info:') ||
+         lower.includes('[info]') ||
          (lower.includes('warning') && (lower.includes('.cs') || lower.includes('csproj')));
 };
 
@@ -107,6 +119,14 @@ const isCSharpError = (content: string): boolean => {
   const lower = content.toLowerCase();
   return lower.includes('error cs') ||
          lower.includes('msbuild error') ||
+         lower.includes('error:') ||
+         lower.includes('error') ||
+         lower.includes('[error]') || 
+         lower.includes('amazon.s3.amazons3exception') ||
+         lower.includes('amazons3exception') ||
+         lower.includes('exception') ||
+         lower.includes('s3exception') ||
+         lower.includes('http error') ||
          (lower.includes('error') && (lower.includes('.cs') || lower.includes('csproj')));
 };
 
@@ -149,7 +169,12 @@ const isScalaError = (content: string): boolean => {
          lower.includes('not found:') ||
          lower.includes('type mismatch') ||
          lower.includes('missing parameter') ||
-         lower.includes('diverging implicit expansion');
+         lower.includes('diverging implicit expansion') ||
+         lower.includes('error]') ||  
+         lower.includes(' error ') ||  
+         (lower.includes('error') && !lower.includes('[info]')) ||
+         lower.includes('failed') ||
+         lower.includes('exception in thread');
 };
 
 // ─── DETECCIÓN GENÉRICA (fallback para otros lenguajes) ─────────────────────
@@ -167,7 +192,14 @@ const isGenericError = (content: string): boolean => {
   return lower.includes('error:') ||
          lower.includes('fatal:') ||
          lower.includes('exception:') ||
-         lower.includes('failed:');
+         lower.includes('failed:') ||
+         lower.includes('failed:') ||
+         lower.includes('amazon.s3.amazons3exception') ||
+         lower.includes('amazons3exception') ||
+         lower.includes('exception') ||
+         lower.includes('s3exception') ||
+         lower.includes('http error');
+         
 };
 
 // ─── FUNCIÓN PRINCIPAL DE CLASIFICACIÓN ──────────────────────────────────────
@@ -176,6 +208,17 @@ const classifyLine = (
   outputType: string, 
   projectType?: string
 ): { category: 'error' | 'warning' | 'success' | 'info' | 'neutral'; color: string } => {
+  
+  // 🔥 Si es JSON y no contiene error explícito, tratarlo como neutral
+  if (isJsonLine(content)) {
+    const lower = content.toLowerCase();
+    // Solo si contiene error explícito Y viene de stderr
+    if (outputType === 'stderr' && (lower.includes('"error"') || lower.includes('"fatal"'))) {
+      return { category: 'error', color: '#f87171' };
+    }
+    // JSON normal → neutral (sin color especial, el JsonViewer se encarga del formato)
+    return { category: 'neutral', color: '#d4d4d8' };
+  }
   
   // 1. Verificar éxito primero (transversal)
   if (isSuccessLine(content)) {
@@ -229,8 +272,14 @@ const classifyLine = (
   return { category: 'neutral', color: '#d4d4d8' };
 };
 
-// Versión con window.open para URLs clickeables
+// Versión con window.open para URLs clickeables y JSON viewer
 const renderContentWithLinks = (content: string) => {
+  // 🔥 Si es JSON, usar el JsonViewer component
+  if (isJsonLine(content)) {
+    return <JsonViewer content={content} />;
+  }
+  
+  // Resto del código para URLs
   const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`[\]]+|www\.[^\s<>"{}|\\^`[\]]+|[a-zA-Z0-9-]+\.(?:com|org|net|io|dev|app|co|me|xyz|info|online|tech|site|cloud|github\.io|gitlab\.io|vercel\.app|netlify\.app|npmjs\.com)[^\s<>"{}|\\^`[\]]*)/gi;
   
   const parts = content.split(urlRegex);
@@ -535,7 +584,7 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
                 >
                   {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-                {/* Contenido con URLs clickeables */}
+                {/* Contenido con URLs clickeables y JSON viewer */}
                 <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
                   {renderContentWithLinks(line.content)}
                 </span>

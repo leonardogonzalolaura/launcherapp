@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
-import { UnlistenFn } from '@tauri-apps/api/event';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { CustomCommandModal } from './components/CustomCommandModal';
 import { ConsoleTab } from './components/ConsoleTab';
 import { Sidebar } from './components/Sidebar';
@@ -72,6 +72,7 @@ function App() {
     spawnProjectCommand, stopProcess,
     addCustomCommand, updateProjectConfig, deleteProjectConfig,
     onProcessOutput, onProcessExit, getGitBranch,
+    watchGitBranch, unwatchGitBranch,
   } = useTauriCommands();
 
   // Save projects to localStorage whenever they change
@@ -103,24 +104,67 @@ function App() {
     }
   }, [selectedProject]);
 
-  // ─── Polling de rama git ────────────────────────────────────────────────
+  // Ref to track selected project in callbacks without re-triggering effects
+  const selectedProjectRef = useRef<Project | null>(null);
+  useEffect(() => {
+    selectedProjectRef.current = selectedProject;
+  }, [selectedProject]);
+
+  // ─── Escuchar cambios de rama git ──────────────────────────────────────────
+  useEffect(() => {
+    let unlisten: UnlistenFn;
+
+    (async () => {
+      unlisten = await listen<{ project_id: string; project_path: string }>('git-branch-changed', async (event) => {
+        const { project_id, project_path } = event.payload;
+        const currentSelected = selectedProjectRef.current;
+        if (currentSelected && currentSelected.id === project_id) {
+          try {
+            const branch = await getGitBranch(project_path);
+            setGitBranches(prev => {
+              if (prev[project_id] === branch) return prev;
+              return { ...prev, [project_id]: branch };
+            });
+          } catch {}
+        }
+      });
+    })();
+
+    return () => {
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  // ─── Monitorear rama git con File Watcher (Eventos) ───────────────────────
   useEffect(() => {
     if (!selectedProject) return;
 
-    const fetchBranch = async () => {
+    const fetchAndWatch = async () => {
+      // 1. Consulta inmediata al seleccionar proyecto
       try {
         const branch = await getGitBranch(selectedProject.path);
         setGitBranches(prev => {
-          // Solo actualizar si cambió para evitar re-renders innecesarios
           if (prev[selectedProject.id] === branch) return prev;
           return { ...prev, [selectedProject.id]: branch };
         });
-      } catch { }
+      } catch {}
+
+      // 2. Activar watcher en el backend
+      try {
+        await watchGitBranch(selectedProject.id, selectedProject.path);
+      } catch (err) {
+        console.error("Error setting up git watcher:", err);
+      }
     };
 
-    fetchBranch(); // Consulta inmediata al seleccionar proyecto
-    const interval = setInterval(fetchBranch, 3000); // Polling cada 3s
-    return () => clearInterval(interval);
+    fetchAndWatch();
+
+    return () => {
+      // Limpiar watcher del backend al cambiar de proyecto o desmontar
+      unwatchGitBranch(selectedProject.id).catch(() => {});
+    };
   }, [selectedProject?.id]);
 
   // ─── Setup event listeners ───────────────────────────────────────────────

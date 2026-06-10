@@ -12,6 +12,7 @@ use models::project::Project;
 pub struct AppState {
     pub projects: Arc<Mutex<HashMap<String, Project>>>,
     pub process_manager: Arc<ProcessManager>,
+    pub git_watchers: Arc<Mutex<HashMap<String, notify::RecommendedWatcher>>>,
 }
 
 #[tokio::main]
@@ -24,6 +25,7 @@ pub async fn run() {
     let state = AppState {
         projects: Arc::new(Mutex::new(projects)),
         process_manager: Arc::new(ProcessManager::new()),
+        git_watchers: Arc::new(Mutex::new(HashMap::new())),
     };
 
     tauri::Builder::default()
@@ -42,6 +44,8 @@ pub async fn run() {
             commands::process::get_active_processes,
             commands::detection::detect_project_from_path,
             commands::project::get_git_branch,
+            commands::project::watch_git_branch,
+            commands::project::unwatch_git_branch,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
