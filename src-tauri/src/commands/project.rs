@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
-use tauri::command;
+use tauri::{command, Emitter};
 use uuid::Uuid;
+use notify::{Watcher, RecursiveMode, Event};
 use super::super::models::project::{Project, ProjectConfig, CustomPaths, ProjectType};
 use super::detection::{ProjectDetector, DetectedInfo};
 use crate::AppState;
@@ -317,4 +318,61 @@ pub async fn load_projects_from_file() -> Result<HashMap<String, Project>, Strin
         .map_err(|e| e.to_string())?;
     
     Ok(projects)
+}
+
+#[command]
+pub async fn watch_git_branch(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+    project_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<bool, String> {
+    // 1. Unwatch previous watcher for this project if it exists
+    {
+        let mut watchers = state.git_watchers.lock().await;
+        watchers.remove(&project_id);
+    }
+
+    let git_dir = PathBuf::from(&project_path).join(".git");
+    if !git_dir.exists() {
+        return Ok(false); // Not a git repository
+    }
+
+    let project_id_clone = project_id.clone();
+    let project_path_clone = project_path.clone();
+    let app_handle_clone = app_handle.clone();
+
+    // 2. Create the watcher
+    let mut watcher = notify::recommended_watcher(move |res: Result<Event, notify::Error>| {
+        if let Ok(event) = res {
+            if event.paths.iter().any(|p| p.ends_with("HEAD")) {
+                let _ = app_handle_clone.emit("git-branch-changed", serde_json::json!({
+                    "project_id": project_id_clone,
+                    "project_path": project_path_clone
+                }));
+            }
+        }
+    }).map_err(|e| e.to_string())?;
+
+    // 3. Start watching the .git directory non-recursively
+    watcher.watch(&git_dir, RecursiveMode::NonRecursive)
+        .map_err(|e| e.to_string())?;
+
+    // 4. Save to AppState to keep it alive
+    {
+        let mut watchers = state.git_watchers.lock().await;
+        watchers.insert(project_id, watcher);
+    }
+
+    Ok(true)
+}
+
+#[command]
+pub async fn unwatch_git_branch(
+    state: tauri::State<'_, AppState>,
+    project_id: String,
+) -> Result<(), String> {
+    let mut watchers = state.git_watchers.lock().await;
+    watchers.remove(&project_id);
+    Ok(())
 }
