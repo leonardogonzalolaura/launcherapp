@@ -97,7 +97,7 @@ export const CommandPanel: React.FC<Props> = ({ project, onExecuteCommand, isLoa
       {buildCommands.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-400 mb-2 flex items-center gap-2">
-            <Hammer size={14} /> Build
+            <Hammer size={14} /> Build 
           </h3>
           <div className="space-y-2">
             {buildCommands.map(renderCommandButton)}
