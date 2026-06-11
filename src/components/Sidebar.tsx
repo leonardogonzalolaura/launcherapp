@@ -344,7 +344,7 @@ export function Sidebar({
             <div 
               className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center cursor-help relative group"
               style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
-              title={gitBranches[selectedProject.id]}
+              title={gitBranches[selectedProject.id] || ''}
             >
               🍃
               <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
