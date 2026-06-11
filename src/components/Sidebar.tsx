@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Plus, FolderOpen, ChevronDown, Play, Hammer,
-  Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft
+  Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft, Search, X
 } from 'lucide-react';
 import { Project, ProjectConfig } from '../types';
 import { CommandButton } from './CommandButton';
@@ -31,7 +31,6 @@ const isBuildCmd = (name: string) => ['build', 'compile'].includes(name);
 export function Sidebar({
   projects,
   selectedProject,
- // isLoading,
   gitBranches,
   onSelectProject,
   onRemoveProject,
@@ -43,6 +42,12 @@ export function Sidebar({
 }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [projectSearchTerm, setProjectSearchTerm] = useState('');
+
+  // Filtrar proyectos por nombre
+  const filteredProjects = projects.filter(p => 
+    p.name.toLowerCase().includes(projectSearchTerm.toLowerCase())
+  );
 
   if (!selectedProject) {
     return (
@@ -82,7 +87,7 @@ export function Sidebar({
         backgroundColor: '#10101c', 
         borderRight: '1px solid #1e1e38',
         width: isCollapsed ? '3rem' : '18rem',
-        overflow: 'hidden'  // ← Esto evita el scroll en el contenedor principal
+        overflow: 'hidden'
       }}
     >
       {/* Botón colapsar/expandir */}
@@ -100,16 +105,20 @@ export function Sidebar({
           {/* Project Info */}
           <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: '#3d3f60' }}>Project</div>
-            {/* Dropdown selector */}
+            
+            {/* Dropdown selector con buscador */}
             <div className="relative mb-2">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden"
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden group relative"
                 style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
+                title={selectedProject.name} // Tooltip con nombre completo
               >
                 <span className="flex-shrink-0">{getProjectIcon(selectedProject.project_type)}</span>
                 <div className="flex-1 text-left min-w-0">
-                  <div className="font-medium truncate">{selectedProject.name}</div>
+                  <div className="font-medium truncate">
+                    {selectedProject.name}
+                  </div>
                 </div>
                 <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: '#252540', color: '#6e7fff' }}>
                   {selectedProject.project_type}
@@ -117,26 +126,64 @@ export function Sidebar({
                 <ChevronDown size={14} style={{ color: '#555878', flexShrink: 0 }} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
-              {isDropdownOpen && projects.length > 0 && (
+              {isDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
-                  {projects.map(p => (
-                    <div key={p.id} className="w-full flex items-center justify-between">
-                      <button
-                        onClick={() => { onSelectProject(p); setIsDropdownOpen(false); }}
-                        className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left truncate hover:bg-[#1f1f35] overflow-hidden"
-                      >
-                        <span className="flex-shrink-0">{getProjectIcon(p.project_type)}</span>
-                        <span className="flex-1 truncate">{p.name}</span>
-                        <span className="text-xs mr-1 flex-shrink-0" style={{ color: '#555878' }}>{p.project_type}</span>
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); onRemoveProject(p.id); }}
-                        className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a] flex-shrink-0"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                  {/* Buscador dentro del dropdown */}
+                  <div className="p-2" style={{ borderBottom: '1px solid #252540' }}>
+                    <div className="relative">
+                      <Search size={12} className="absolute left-2 top-1/2 transform -translate-y-1/2" style={{ color: '#555878' }} />
+                      <input
+                        type="text"
+                        placeholder="Search projects..."
+                        value={projectSearchTerm}
+                        onChange={(e) => setProjectSearchTerm(e.target.value)}
+                        className="w-full pl-7 pr-6 py-1.5 text-xs rounded"
+                        style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0', outline: 'none' }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      {projectSearchTerm && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectSearchTerm('');
+                          }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2"
+                          style={{ color: '#555878' }}
+                        >
+                          <X size={10} />
+                        </button>
+                      )}
                     </div>
-                  ))}
+                  </div>
+                  
+                  {/* Lista de proyectos filtrados */}
+                  <div className="max-h-64 overflow-y-auto">
+                    {filteredProjects.length > 0 ? (
+                      filteredProjects.map(p => (
+                        <div key={p.id} className="w-full flex items-center justify-between group">
+                          <button
+                            onClick={() => { onSelectProject(p); setIsDropdownOpen(false); setProjectSearchTerm(''); }}
+                            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#1f1f35] overflow-hidden"
+                            title={p.name} // Tooltip con nombre completo
+                          >
+                            <span className="flex-shrink-0">{getProjectIcon(p.project_type)}</span>
+                            <span className="flex-1 truncate">{p.name}</span>
+                            <span className="text-xs mr-1 flex-shrink-0" style={{ color: '#555878' }}>{p.project_type}</span>
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onRemoveProject(p.id); }}
+                            className="p-1.5 rounded mr-2 transition-colors text-gray-500 hover:text-red-400 hover:bg-[#2d2d4a] flex-shrink-0 opacity-0 group-hover:opacity-100"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-center py-4 text-xs" style={{ color: '#555878' }}>
+                        No projects found
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -144,7 +191,11 @@ export function Sidebar({
             {/* Git branch */}
             {gitBranches[selectedProject.id] && (
               <div className="mt-2">
-                <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit max-w-full truncate" style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}>
+                <span 
+                  className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit max-w-full truncate cursor-help"
+                  style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}
+                  title={gitBranches[selectedProject.id] || ''}
+                >
                   🍃 {gitBranches[selectedProject.id]}
                 </span>
               </div>
@@ -250,10 +301,14 @@ export function Sidebar({
           {/* Botón Add Project */}
           <button
             onClick={onAddProject}
-            className="mt-6 p-2 rounded hover:bg-[#1f1f35] transition-colors"
+            className="mt-6 p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
             title="Add project"
           >
             <Plus size={18} />
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+              Add project
+            </span>
           </button>
           
           {/* Botón Add Custom Command */}
@@ -272,17 +327,32 @@ export function Sidebar({
           {/* Separador */}
           <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
           
-          {/* Icono del proyecto */}
-          <div className="text-2xl">{getProjectIcon(selectedProject.project_type)}</div>
+          {/* Icono del proyecto con tooltip */}
+          <div 
+            className="text-2xl relative group cursor-help"
+            title={selectedProject.name}
+          >
+            {getProjectIcon(selectedProject.project_type)}
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+              {selectedProject.name}
+            </span>
+          </div>
           
-          {/* Rama git (si existe) - versión compacta */}
+          {/* Rama git (si existe) - versión compacta con tooltip */}
           {gitBranches[selectedProject.id] && (
-  <div className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center"
-       style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
-       title={gitBranches[selectedProject.id] || ''}>
-    🍃
-  </div>
-)}
+            <div 
+              className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center cursor-help relative group"
+              style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
+              title={gitBranches[selectedProject.id]}
+            >
+              🍃
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#c084fc' }}>
+                {gitBranches[selectedProject.id]}
+              </span>
+            </div>
+          )}
           
           {/* Separador */}
           <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
@@ -308,8 +378,16 @@ export function Sidebar({
           
           {/* Indicador de más comandos */}
           {selectedProject.configurations.length > 4 && (
-            <div className="text-[10px] px-1 py-0.5 rounded mt-1" style={{ backgroundColor: '#1a1a2e', color: '#555878' }}>
+            <div 
+              className="text-[10px] px-1 py-0.5 rounded mt-1 cursor-help relative group"
+              style={{ backgroundColor: '#1a1a2e', color: '#555878' }}
+              title={`${selectedProject.configurations.length - 4} more commands`}
+            >
               +{selectedProject.configurations.length - 4}
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
+                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+                {selectedProject.configurations.length - 4} more commands available
+              </span>
             </div>
           )}
         </div>
