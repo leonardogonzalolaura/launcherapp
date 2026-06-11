@@ -231,6 +231,7 @@ const handleClearLogs = (processId: string) => {
         logs: [],
         started_at: info.started_at,
         git_branch: branch,
+        project_type: selectedProject.project_type,
       };
       setProcessTabs(prev => [...prev, newTab]);
       setActiveTabId(info.id);
