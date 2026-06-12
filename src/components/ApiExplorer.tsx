@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Search, AlertCircle, HelpCircle, Key, FileText, Send, Trash, Plus, Globe, CheckCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Search, AlertCircle, Send, Globe, CheckCircle, Maximize2, Minimize2 } from 'lucide-react';
+
 import { invoke } from '@tauri-apps/api/core';
 import { JsonViewer } from './JsonViewer';
 
@@ -90,7 +91,8 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   // Response states
   const [executing, setExecuting] = useState(false);
   const [responseStatus, setResponseStatus] = useState<number | null>(null);
-  const [responseHeaders, setResponseHeaders] = useState<Record<string, string>>({});
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_responseHeaders, setResponseHeaders] = useState<Record<string, string>>({});
   const [responseBody, setResponseBody] = useState<string>('');
   const [responseTime, setResponseTime] = useState<number | null>(null);
 
@@ -144,42 +146,113 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   }, [logs, endpoints.length]);
 
   const probeSwaggerEndpoints = async (baseUrl: string) => {
-    const commonPaths = [
+    // All path combinations to probe: basePaths x jsonSuffixes
+    // This handles: FastAPI (/openapi.json), Connexion (/api/v1/openapi.json),
+    // ASP.NET Core (/swagger/v1/swagger.json), Flask-RESTX (/swagger.json), etc.
+    const basePaths = [
+      '',
+      '/api/v1',
+      '/api/v2',
+      '/api',
+      '/api/util',
+      '/api/generic',
+    ];
+    const jsonSuffixes = [
       '/openapi.json',
-      '/swagger/v1/swagger.json',
       '/swagger.json',
+      '/swagger/v1/swagger.json',
       '/api-docs',
-      '/api/v1/openapi.json',
-      '/v2/api-docs'
+      '/v2/api-docs',
     ];
 
     setLoading(true);
     setDetectedStatus('Buscando endpoints activos...');
 
-    for (const path of commonPaths) {
-      const fullUrl = `${baseUrl}${path}`;
-      try {
-        // Use backend to bypass CORS
-        const responseText: string = await invoke('fetch_external_url', { url: fullUrl });
-        const data = JSON.parse(responseText);
-        if (data && (data.paths || data.openapi || data.swagger)) {
-          setSwaggerUrl(fullUrl);
-          localStorage.setItem(`launcher_swagger_url_${projectId}`, fullUrl);
-          localStorage.setItem(`launcher_swagger_schema_${projectId}`, JSON.stringify(data));
-          parseSwaggerSchema(data);
-          setDetectedStatus(`¡API auto-detectada en ${path}!`);
-          setTimeout(() => setDetectedStatus(null), 5000);
-          setLoading(false);
-          return;
+    // Build all unique URLs to probe
+    const urlsToProbe: string[] = [];
+    const seen = new Set<string>();
+    for (const base of basePaths) {
+      for (const suffix of jsonSuffixes) {
+        const fullUrl = `${baseUrl}${base}${suffix}`;
+        if (!seen.has(fullUrl)) {
+          seen.add(fullUrl);
+          urlsToProbe.push(fullUrl);
         }
-      } catch (e) {
-        // Continue probing next path
       }
     }
 
-    setDetectedStatus(null);
+    // Fire all requests in parallel for speed
+    const tryFetch = async (url: string): Promise<{ url: string; data: any } | null> => {
+      try {
+        const responseText: string = await invoke('fetch_external_url', { url });
+        const data = JSON.parse(responseText);
+        if (data && (data.paths || data.openapi || data.swagger)) {
+          return { url, data };
+        }
+      } catch (_) { /* ignore */ }
+      return null;
+    };
+
+    const results = await Promise.allSettled(urlsToProbe.map(tryFetch));
+    const foundSchemas = results
+      .filter((r): r is PromiseFulfilledResult<{ url: string; data: any }> =>
+        r.status === 'fulfilled' && r.value !== null
+      )
+      .map(r => r.value);
+
+    if (foundSchemas.length > 0) {
+      const merged = mergeSchemas(foundSchemas.map(s => s.data));
+      const primaryUrl = foundSchemas[0].url;
+      setSwaggerUrl(primaryUrl);
+      localStorage.setItem(`launcher_swagger_url_${projectId}`, primaryUrl);
+      localStorage.setItem(`launcher_swagger_schema_${projectId}`, JSON.stringify(merged));
+      parseSwaggerSchema(merged);
+
+      const msg = foundSchemas.length > 1
+        ? `¡${foundSchemas.length} esquemas combinados automáticamente!`
+        : `¡API auto-detectada!`;
+      setDetectedStatus(msg);
+      setTimeout(() => setDetectedStatus(null), 6000);
+    } else {
+      setDetectedStatus(null);
+    }
+
     setLoading(false);
   };
+
+  /**
+   * Merges multiple OpenAPI schemas into one combined schema.
+   * All paths from all schemas are collected, with a prefix tag showing which
+   * spec they came from if they differ.
+   */
+  const mergeSchemas = (schemas: any[]): any => {
+    if (schemas.length === 1) return schemas[0];
+
+    const base = { ...schemas[0] };
+    base.paths = { ...(base.paths || {}) };
+
+    for (let i = 1; i < schemas.length; i++) {
+      const schema = schemas[i];
+      if (schema.paths) {
+        Object.entries(schema.paths).forEach(([path, pathItem]) => {
+          if (!base.paths[path]) {
+            base.paths[path] = pathItem;
+          }
+        });
+      }
+      // Merge components/schemas if present
+      if (schema.components?.schemas && base.components) {
+        base.components.schemas = {
+          ...(base.components.schemas || {}),
+          ...schema.components.schemas,
+        };
+      }
+    }
+
+    return base;
+  };
+
+
 
   const fetchSwagger = async () => {
     setLoading(true);
