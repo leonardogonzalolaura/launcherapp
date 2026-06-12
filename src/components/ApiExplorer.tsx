@@ -854,6 +854,43 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
                 </div>
               )}
 
+              {/* Headers Configuration */}
+              <div className="flex flex-col gap-1.5 bg-[#141424]/40 p-2.5 rounded border border-[#20203a]">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-bold text-amber-400">Headers Personalizados:</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] text-gray-500 font-sans">Formato: LLAVE=valor (Uno por línea):</label>
+                  <textarea
+                    rows={3}
+                    value={Object.entries(headers)
+                      .filter(([k]) => k !== 'Content-Type' && k !== 'Accept')
+                      .map(([k, v]) => `${k}=${v}`)
+                      .join('\n')}
+                    onChange={(e) => {
+                      const lines = e.target.value.split('\n');
+                      const newHeaders: Record<string, string> = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                      };
+                      lines.forEach(line => {
+                        const eqIdx = line.indexOf('=');
+                        if (eqIdx > 0) {
+                          const key = line.slice(0, eqIdx).trim();
+                          const val = line.slice(eqIdx + 1).trim();
+                          if (key) {
+                            newHeaders[key] = val;
+                          }
+                        }
+                      });
+                      setHeaders(newHeaders);
+                    }}
+                    placeholder={`Authorization=Bearer eyJhbGciOi...\nX-API-Key=mi-llave-secreta`}
+                    className="w-full text-xs p-2 rounded bg-[#0d0d14] border border-[#23233a] focus:outline-none focus:border-amber-500 text-gray-300 font-mono resize-none"
+                  />
+                </div>
+              </div>
+
               {/* Body Content Editor */}
               {((!manualMode && ['POST', 'PUT', 'PATCH'].includes(selectedEndpoint?.method || '')) || 
                 (manualMode && ['POST', 'PUT', 'PATCH'].includes(manualMethod))) && (
