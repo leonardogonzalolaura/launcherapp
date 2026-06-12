@@ -40,6 +40,15 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   const [swaggerUrl, setSwaggerUrl] = useState(() => {
     return localStorage.getItem(`launcher_swagger_url_${projectId}`) || 'http://localhost:8000/openapi.json';
   });
+
+  // Optional path prefix inserted between host and endpoint path when executing
+  // e.g. if prefix is "/api/v1", then: host + /api/v1 + /pipelines
+  const [pathPrefix, setPathPrefix] = useState(() => {
+    return localStorage.getItem(`launcher_path_prefix_${projectId}`) || '';
+  });
+  const [showPathPrefix, setShowPathPrefix] = useState(() => {
+    return !!localStorage.getItem(`launcher_path_prefix_${projectId}`);
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
@@ -452,12 +461,18 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
         if (!selectedEndpoint) return;
         method = selectedEndpoint.method;
         
-        // Build base URL from Swagger URL (extract host + protocol)
+        // Build base URL: extract host from swagger URL, then optionally add path prefix
         let baseUrl = 'http://localhost:8000';
         try {
           const parsedUrl = new URL(swaggerUrl);
           baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
         } catch {}
+
+        // Append optional path prefix (e.g. /api/v1)
+        const prefix = pathPrefix.trim().replace(/\/$/, '');
+        if (prefix) {
+          baseUrl = `${baseUrl}${prefix.startsWith('/') ? prefix : '/' + prefix}`;
+        }
 
         // Replace path params
         let finalPath = selectedEndpoint.path;
@@ -553,7 +568,9 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
 
       {/* Connection bar */}
       <div className="p-3 flex flex-col gap-2 flex-shrink-0 border-b border-[#1b1b2d] bg-[#0c0c12]">
+        {/* Row 1: Swagger discovery URL */}
         <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 text-[10px] text-gray-500 whitespace-nowrap">Swagger URL</div>
           <input
             type="text"
             value={swaggerUrl}
@@ -569,7 +586,6 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
           >
             {loading ? 'Cargando...' : 'Escanear'}
           </button>
-          
           <button
             onClick={() => {
               setManualMode(!manualMode);
@@ -583,7 +599,55 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
           >
             Manual
           </button>
+          {/* Toggle button for path prefix */}
+          <button
+            title={showPathPrefix ? 'Ocultar prefijo de ruta' : 'Agregar prefijo de ruta para ejecución (ej: /api/v1)'}
+            onClick={() => {
+              const next = !showPathPrefix;
+              setShowPathPrefix(next);
+              if (!next) {
+                setPathPrefix('');
+                localStorage.removeItem(`launcher_path_prefix_${projectId}`);
+              }
+            }}
+            className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
+              showPathPrefix
+                ? 'bg-amber-900/40 text-amber-300 border border-amber-700/40'
+                : 'text-gray-500 hover:bg-[#1a1a2e] hover:text-amber-400'
+            }`}
+          >
+            ⚡ Prefijo
+          </button>
         </div>
+
+        {/* Row 2: Optional path prefix */}
+        {showPathPrefix && (
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 text-[10px] text-amber-500/80 whitespace-nowrap">Prefijo</div>
+            <div className="flex items-center flex-1 rounded bg-[#13131f] border border-amber-800/40 focus-within:border-amber-500 overflow-hidden font-mono">
+              <span className="text-[11px] text-gray-500 px-2 border-r border-amber-900/30 whitespace-nowrap select-none">
+                {(() => { try { return new URL(swaggerUrl).origin; } catch { return 'http://localhost:8000'; } })()}
+              </span>
+              <input
+                type="text"
+                value={pathPrefix}
+                onChange={(e) => {
+                  setPathPrefix(e.target.value);
+                  if (e.target.value.trim()) {
+                    localStorage.setItem(`launcher_path_prefix_${projectId}`, e.target.value.trim());
+                  } else {
+                    localStorage.removeItem(`launcher_path_prefix_${projectId}`);
+                  }
+                }}
+                placeholder="/api/v1"
+                className="flex-1 text-xs px-2 py-1 bg-transparent focus:outline-none text-amber-200"
+              />
+              {pathPrefix.trim() && (
+                <span className="text-[10px] text-amber-400/70 px-2 whitespace-nowrap">⚡ activa</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Dynamic Detection status toast/badge */}
         {detectedStatus && (
