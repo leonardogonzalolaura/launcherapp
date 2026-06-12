@@ -69,11 +69,29 @@ impl ProcessManager {
 
     fn build_command(command_str: &str, working_dir: &Path, env_vars: &HashMap<String, String>) -> Command {
         let mut cmd = Command::new("powershell");
+
+        // Force UTF-8 encoding for the PowerShell session and any child processes.
+        // - chcp 65001      : sets the Windows console codepage to UTF-8 at the Win32 API level,
+        //                     which covers native binaries (C/C++, Java, .NET, etc.) that read
+        //                     GetConsoleCP() directly — the layer that [Console]::OutputEncoding
+        //                     alone does NOT reach.
+        // - OutputEncoding  : makes PowerShell itself write UTF-8 to the pipe.
+        // - InputEncoding   : makes PowerShell read UTF-8 from stdin.
+        // - PYTHONIOENCODING: legacy env-var respected by Python 3.6+.
+        // - PYTHONUTF8=1    : Python 3.7+ global UTF-8 mode (strongest guarantee for Python).
+        let utf8_prefix = "chcp 65001 | Out-Null; \
+                           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
+                           [Console]::InputEncoding  = [System.Text.Encoding]::UTF8; \
+                           $env:PYTHONIOENCODING = 'utf-8'; \
+                           $env:PYTHONUTF8 = '1'; ";
+
+        let wrapped_command = format!("{}{}", utf8_prefix, command_str);
+
         cmd.args(&[
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            command_str,
+            &wrapped_command,
         ]);
 
         #[cfg(target_os = "windows")]
@@ -86,12 +104,14 @@ impl ProcessManager {
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
 
+        // Apply user-defined env vars (they can override the defaults above if needed)
         for (k, v) in env_vars {
             cmd.env(k, v);
         }
 
         cmd
     }
+
 
     /// Kills the process tree using `taskkill /F /T /PID` on Windows.
     /// This ensures sub-processes (e.g. sbt → JVM) are also terminated.
