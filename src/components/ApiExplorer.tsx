@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertCircle, Send, Globe, CheckCircle, Maximize2, Minimize2 } from 'lucide-react';
+import { Search, AlertCircle, Send, Globe, CheckCircle, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
 
 import { invoke } from '@tauri-apps/api/core';
 import { JsonViewer } from './JsonViewer';
@@ -104,6 +104,7 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   const [_responseHeaders, setResponseHeaders] = useState<Record<string, string>>({});
   const [responseBody, setResponseBody] = useState<string>('');
   const [responseTime, setResponseTime] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Manual endpoint entry mode (if Swagger/OpenAPI is not available)
   const [manualMode, setManualMode] = useState(false);
@@ -387,7 +388,23 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   useEffect(() => {
     if (!selectedEndpoint) return;
 
-    // Reset inputs
+    const storageKey = `launcher_api_payload_${projectId}_${selectedEndpoint.method}_${selectedEndpoint.path}`;
+    const savedPayloadRaw = localStorage.getItem(storageKey);
+
+    if (savedPayloadRaw) {
+      try {
+        const saved = JSON.parse(savedPayloadRaw);
+        setPathParams(saved.pathParams || {});
+        setQueryParams(saved.queryParams || {});
+        setHeaders(prev => ({ ...prev, ...(saved.headers || {}) }));
+        setRequestBody(saved.requestBody || '{}');
+        return; // Carga exitosa, omitir generación de plantilla
+      } catch (e) {
+        console.error('Error parsing saved endpoint payload:', e);
+      }
+    }
+
+    // Reset inputs si no hay guardado previo
     const initialPathParams: Record<string, string> = {};
     const initialQueryParams: Record<string, string> = {};
     const initialHeaders: Record<string, string> = {
@@ -438,7 +455,7 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
       }
     }
     setRequestBody(bodyTemplate);
-  }, [selectedEndpoint]);
+  }, [selectedEndpoint, projectId]);
 
   const executeRequest = async () => {
     setExecuting(true);
@@ -491,6 +508,17 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
         if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && selectedEndpoint.requestBody) {
           body = requestBody;
         }
+      }
+      
+      // Guardar el payload para reusarlo después
+      if (!manualMode && selectedEndpoint) {
+        const storageKey = `launcher_api_payload_${projectId}_${selectedEndpoint.method}_${selectedEndpoint.path}`;
+        localStorage.setItem(storageKey, JSON.stringify({
+          pathParams,
+          queryParams,
+          headers,
+          requestBody
+        }));
       }
 
       // Execute request through the Rust backend (Bypasses CORS completely!)
@@ -864,7 +892,32 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
               {(responseStatus !== null || responseBody) && (
                 <div className="flex flex-col gap-2 border-t border-[#1d1d32] pt-4">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-gray-400 font-sans">Respuesta:</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-gray-400 font-sans">Respuesta:</span>
+                      {responseBody && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(responseBody);
+                            setCopied(true);
+                            setTimeout(() => setCopied(false), 2000);
+                          }}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] bg-[#1c1c30] text-[#8890b0] hover:text-[#e2e4f0] transition-colors border border-[#2e2e50]"
+                          title="Copiar respuesta al portapapeles"
+                        >
+                          {copied ? (
+                            <>
+                              <Check size={10} className="text-green-400" />
+                              <span className="text-green-400 font-sans">Copiado</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy size={10} />
+                              <span className="font-sans">Copiar</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
                     <div className="flex gap-3 text-[11px]">
                       {responseStatus !== null && (
                         <span className="font-sans">
@@ -879,7 +932,7 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
                     </div>
                   </div>
 
-                  <div className="p-3 rounded bg-[#07070c] border border-[#1b1b2f] overflow-x-auto max-h-[300px]">
+                  <div className="p-3 rounded bg-[#07070c] border border-[#1b1b2f] overflow-x-auto max-h-[300px] text-[11px] font-mono">
                     {responseBody ? (
                       <JsonViewer content={responseBody} maxPreviewLength={200} />
                     ) : (
