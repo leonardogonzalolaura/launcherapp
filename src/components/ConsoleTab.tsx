@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Square, X, Play, Trash, Copy, ArrowDown, Filter } from 'lucide-react';
+import { Square, X, Play, Trash, Copy, ArrowDown, Filter, Globe } from 'lucide-react';
 import { ProcessTab } from '../types';
 import { JsonViewer, isJsonLine } from './JsonViewer';
+import { ApiExplorer } from './ApiExplorer';
 
 interface ConsoleTabProps {
   tab: ProcessTab;
@@ -322,6 +323,8 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
   const [autoScroll, setAutoScroll] = useState(true);
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warning' | 'success'>('all');
   const [showFilterMenu, setShowFilterMenu] = useState(false);
+  const [showApiExplorer, setShowApiExplorer] = useState(false);
+  const [isApiExplorerMaximized, setIsApiExplorerMaximized] = useState(false);
 
   useEffect(() => {
     if (autoScroll) {
@@ -482,6 +485,22 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
             </button>
           )}
 
+          {/* Botón API Client (Mini Swagger/Postman) */}
+          <button
+            onClick={() => setShowApiExplorer(!showApiExplorer)}
+            className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
+            style={{ 
+              backgroundColor: showApiExplorer ? 'rgba(147,51,234,.25)' : 'rgba(147,51,234,.15)', 
+              color: '#c084fc', 
+              border: showApiExplorer ? '1px solid rgba(147,51,234,.5)' : '1px solid rgba(147,51,234,.3)' 
+            }}
+            onMouseEnter={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(147,51,234,.25)'; }}
+            onMouseLeave={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(147,51,234,.15)'; }}
+            title="Abrir Mini Swagger / Cliente API"
+          >
+            <Globe size={12} /> API Client
+          </button>
+
           {/* Botón auto-scroll toggle */}
           <button
             onClick={() => setAutoScroll(!autoScroll)}
@@ -544,55 +563,74 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
         </div>
       </div>
 
-      {/* Log output */}
-      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" style={{ backgroundColor: '#080810' }}>
-        {filteredLogs.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-center" style={{ color: '#3d3f60' }}>
-            <div className="flex flex-col items-center gap-2">
-              <Trash size={24} className="opacity-30" />
-              <p className="text-sm">No logs to display</p>
-              {logFilter !== 'all' && (
-                <p className="text-xs">Try changing the filter</p>
-              )}
-            </div>
-          </div>
-        ) : (
-          filteredLogs.map((line, idx) => {
-            const classification = classifyLine(line.content, line.output_type, tab.project_type);
-            const isError = classification.category === 'error';
-            const isWarning = classification.category === 'warning';
-            const lineColor = classification.color;
-            
-            return (
-              <div 
-                key={line.id} 
-                className={`flex gap-3 mb-0.5 leading-5 hover:bg-gray-800/20 rounded transition-colors ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
-              >
-                {/* Número de línea con tooltip */}
-                <span 
-                  className="flex-shrink-0 select-none text-right w-8 cursor-help" 
-                  style={{ color: '#333558' }}
-                  title={`Línea ${idx + 1}${isError ? ' - Contiene un error' : isWarning ? ' - Contiene una advertencia' : ''}`}
-                >
-                  {idx + 1}
-                </span>
-                {/* Timestamp con tooltip */}
-                <span 
-                  className="flex-shrink-0 select-none cursor-help" 
-                  style={{ color: '#333558' }}
-                  title={new Date(line.timestamp).toLocaleString()}
-                >
-                  {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-                {/* Contenido con URLs clickeables y JSON viewer */}
-                <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
-                  {renderContentWithLinks(line.content)}
-                </span>
+      {/* Split Layout Container */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Log output */}
+        {(!showApiExplorer || !isApiExplorerMaximized) && (
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" style={{ backgroundColor: '#080810' }}>
+            {filteredLogs.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-center" style={{ color: '#3d3f60' }}>
+                <div className="flex flex-col items-center gap-2">
+                  <Trash size={24} className="opacity-30" />
+                  <p className="text-sm">No logs to display</p>
+                  {logFilter !== 'all' && (
+                    <p className="text-xs">Try changing the filter</p>
+                  )}
+                </div>
               </div>
-            );
-          })
+            ) : (
+              filteredLogs.map((line, idx) => {
+                const classification = classifyLine(line.content, line.output_type, tab.project_type);
+                const isError = classification.category === 'error';
+                const isWarning = classification.category === 'warning';
+                const lineColor = classification.color;
+                
+                return (
+                  <div 
+                    key={line.id} 
+                    className={`flex gap-3 mb-0.5 leading-5 hover:bg-gray-800/20 rounded transition-colors ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
+                  >
+                    {/* Número de línea con tooltip */}
+                    <span 
+                      className="flex-shrink-0 select-none text-right w-8 cursor-help" 
+                      style={{ color: '#333558' }}
+                      title={`Línea ${idx + 1}${isError ? ' - Contiene un error' : isWarning ? ' - Contiene una advertencia' : ''}`}
+                    >
+                      {idx + 1}
+                    </span>
+                    {/* Timestamp con tooltip */}
+                    <span 
+                      className="flex-shrink-0 select-none cursor-help" 
+                      style={{ color: '#333558' }}
+                      title={new Date(line.timestamp).toLocaleString()}
+                    >
+                      {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                    </span>
+                    {/* Contenido con URLs clickeables y JSON viewer */}
+                    <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
+                      {renderContentWithLinks(line.content)}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+            <div ref={bottomRef} />
+          </div>
         )}
-        <div ref={bottomRef} />
+
+        {/* API Client (Mini Swagger/Postman Panel) */}
+        {showApiExplorer && (
+          <div className={`${isApiExplorerMaximized ? 'w-full' : 'w-1/2 min-w-[420px]'} h-full flex-shrink-0 border-l border-[#252540] transition-all`}>
+            <ApiExplorer
+              projectId={tab.project_id}
+              projectName={tab.project_name}
+              logs={tab.logs}
+              isMaximized={isApiExplorerMaximized}
+              onToggleMaximize={() => setIsApiExplorerMaximized(!isApiExplorerMaximized)}
+              onClose={() => setShowApiExplorer(false)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
