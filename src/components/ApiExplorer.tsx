@@ -46,6 +46,39 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   const [selectedEndpoint, setSelectedEndpoint] = useState<ApiEndpoint | null>(null);
   const [detectedStatus, setDetectedStatus] = useState<string | null>(null);
 
+  // Resizable sidebar states
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        const newWidth = e.clientX - rect.left;
+        setSidebarWidth(Math.max(180, Math.min(600, newWidth)));
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
   // Form states for execution
   const [pathParams, setPathParams] = useState<Record<string, string>>({});
   const [queryParams, setQueryParams] = useState<Record<string, string>>({});
@@ -496,10 +529,13 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
       )}
 
       {/* Main layout */}
-      <div className="flex-1 flex overflow-hidden">
+      <div ref={containerRef} className="flex-1 flex overflow-hidden">
         {/* Endpoints Sidebar (Only in Swagger Mode) */}
         {!manualMode ? (
-          <div className="w-64 border-r border-[#1b1b2d] flex flex-col flex-shrink-0 bg-[#0b0b10]">
+          <div 
+            className="border-r border-[#1b1b2d] flex flex-col flex-shrink-0 bg-[#0b0b10]"
+            style={{ width: `${sidebarWidth}px` }}
+          >
             <div className="p-2 border-b border-[#1b1b2d]">
               <div className="relative">
                 <input
@@ -547,6 +583,15 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
             </div>
           </div>
         ) : null}
+
+        {/* Drag Handle Divider (Only in Swagger Mode) */}
+        {!manualMode && (
+          <div 
+            onMouseDown={handleMouseDown} 
+            className={`w-[3px] cursor-col-resize hover:bg-purple-500 bg-[#141424] hover:w-[4px] transition-all flex-shrink-0 ${isDragging ? 'bg-purple-600 w-[4px]' : ''}`}
+            title="Arrastra para cambiar el tamaño"
+          />
+        )}
 
         {/* Execution & Panel Area */}
         <div className="flex-1 flex flex-col overflow-y-auto p-4 bg-[#0a0a0f] gap-4">
