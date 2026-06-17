@@ -2,7 +2,7 @@ export interface Project {
   id: string;
   name: string;
   path: string;
-  project_type: 'Python' | 'Scala' | 'CSharp' | 'React' | 'Unknown';
+  project_type: 'Python' | 'Scala' | 'CSharp' | 'React' | 'JavaScript' | 'Unknown';
   language_version?: string;
   configurations: ProjectConfig[];
   env_files: string[];
@@ -18,6 +18,7 @@ export interface ProjectConfig {
   build_command?: string;
   custom_paths: CustomPaths;
   is_custom?: boolean; // frontend-only marker (not persisted in Rust, just for display)
+  group?: string;
 }
 
 export interface CustomPaths {
@@ -75,6 +76,8 @@ export interface ProcessTab {
   project_id: string;
   project_name: string;
   config_name: string;
+  config_index: number;
+  config_group?: string;
   status: 'running' | 'stopped' | 'error';
   logs: LogLine[];
   started_at: string;

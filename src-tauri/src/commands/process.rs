@@ -341,17 +341,15 @@ pub async fn spawn_project_command(
     app_handle: AppHandle,
     state: tauri::State<'_, crate::AppState>,
     project_id: String,
-    config_name: String,
+    config_index: usize,
 ) -> Result<ProcessInfo, String> {
-    let (project_name, final_command, working_dir, env_vars) = {
+    let (project_name, config_name, final_command, working_dir, env_vars) = {
         let projects = state.projects.lock().await;
         let project = projects.get(&project_id).ok_or("Project not found")?;
-        let config = project.configurations.iter()
-            .find(|c| c.name == config_name)
-            .ok_or("Config not found")?;
+        let config = project.configurations.get(config_index)
+            .ok_or("Config index out of bounds")?;
 
         let cmd = build_command_with_paths(config, project).await?;
-        // Fall back to project root if working_dir is empty/missing
         let wd = if config.working_dir.as_os_str().is_empty() || !config.working_dir.exists() {
             project.path.clone()
         } else {
@@ -359,6 +357,7 @@ pub async fn spawn_project_command(
         };
         (
             project.name.clone(),
+            config.name.clone(),
             cmd,
             wd,
             config.env_vars.clone(),

@@ -244,6 +244,11 @@ const classifyLine = (
     if (isCSharpWarning(content)) return { category: 'warning', color: '#fbbf24' };
   }
   
+  else if (projectType === 'JavaScript') {
+    if (isNodeError(content)) return { category: 'error', color: '#f87171' };
+    if (isNodeWarning(content)) return { category: 'warning', color: '#fbbf24' };
+  }
+
   else if (projectType === 'React' || projectType === 'Node') {
     if (isNodeError(content)) return { category: 'error', color: '#f87171' };
     if (isNodeWarning(content)) return { category: 'warning', color: '#fbbf24' };
@@ -382,6 +387,11 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
           <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: '#1a1a2e', color: '#6e7fff', border: '1px solid #2e2e50' }}>
             {tab.config_name}
           </span>
+          {tab.config_group && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#1e1e38', color: '#8890b0', border: '1px solid #2e2e50' }}>
+              📁 {tab.config_group}
+            </span>
+          )}
           {(liveGitBranch ?? tab.git_branch) && (
             <span
               className="flex items-center gap-1 text-xs px-2 py-0.5 rounded font-mono"

@@ -21,7 +21,13 @@ impl ProjectDetector {
     pub fn detect_project(path: &Path) -> Option<DetectedInfo> {
         // Detectar por archivos característicos
         if path.join("package.json").exists() {
-            return Self::detect_react_project(path);
+            // First try React-specific detection
+            let react = Self::detect_react_project(path);
+            if react.is_some() {
+                return react;
+            }
+            // Fallback to generic JavaScript/TypeScript project
+            return Self::detect_javascript_project(path);
         } else if path.join("build.sbt").exists() {
             return Self::detect_scala_project(path);
         } else if Self::find_csproj(path).is_some() {
@@ -126,6 +132,56 @@ impl ProjectDetector {
         }
     }
     
+    pub fn detect_javascript_project(path: &Path) -> Option<DetectedInfo> {
+        let package_json_path = path.join("package.json");
+        if let Ok(content) = fs::read_to_string(package_json_path) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                let empty_obj = serde_json::json!({});
+                let scripts = json.get("scripts").unwrap_or(&empty_obj);
+                let mut commands = Vec::new();
+
+                for script in ["dev", "start", "build", "test", "preview"] {
+                    if scripts.get(script).is_some() {
+                        commands.push(script.to_string());
+                    }
+                }
+
+                if let Some(scripts_obj) = scripts.as_object() {
+                    for (key, _) in scripts_obj {
+                        if !["dev", "start", "build", "test", "preview"].contains(&key.as_str()) {
+                            commands.push(key.clone());
+                        }
+                    }
+                }
+
+                let mut config_files = vec![path.join("package.json")];
+                if path.join("tsconfig.json").exists() {
+                    config_files.push(path.join("tsconfig.json"));
+                }
+                if path.join("vite.config.ts").exists() {
+                    config_files.push(path.join("vite.config.ts"));
+                } else if path.join("vite.config.js").exists() {
+                    config_files.push(path.join("vite.config.js"));
+                }
+                if path.join("webpack.config.js").exists() {
+                    config_files.push(path.join("webpack.config.js"));
+                }
+                if path.join(".eslintrc.js").exists() || path.join(".eslintrc.json").exists() {
+                    config_files.push(path.join(".eslintrc.js"));
+                }
+
+                return Some(DetectedInfo {
+                    project_type: ProjectType::JavaScript,
+                    version: None,
+                    available_commands: commands,
+                    config_files,
+                    has_env_file: path.join(".env").exists(),
+                });
+            }
+        }
+        None
+    }
+
     pub fn detect_python_project(path: &Path) -> Option<DetectedInfo> {
         let mut commands = Vec::new();
         let mut config_files = Vec::new();

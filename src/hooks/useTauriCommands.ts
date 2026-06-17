@@ -56,9 +56,9 @@ export const useTauriCommands = () => {
   // ─── Process Execution ─────────────────────────────────────────────────────
   const spawnProjectCommand = async (
     projectId: string,
-    configName: string
+    configIndex: number
   ): Promise<ProcessInfo> => {
-    return await invoke('spawn_project_command', { projectId, configName });
+    return await invoke('spawn_project_command', { projectId, configIndex });
   };
 
   const stopProcess = async (processId: string): Promise<void> => {

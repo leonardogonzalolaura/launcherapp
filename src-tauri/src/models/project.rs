@@ -20,6 +20,7 @@ pub enum ProjectType {
     Scala,
     CSharp,
     React,
+    JavaScript,
     Unknown,
 }
 
@@ -32,6 +33,8 @@ pub struct ProjectConfig {
     pub requires_build: bool,
     pub build_command: Option<String>,
     pub custom_paths: CustomPaths,
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

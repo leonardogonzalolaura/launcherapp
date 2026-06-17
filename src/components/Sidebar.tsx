@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Plus, FolderOpen, ChevronDown, Play, Hammer,
-  Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft, Search, X
+  Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft, Search, X,
+  Folder
 } from 'lucide-react';
 import { Project, ProjectConfig } from '../types';
 import { CommandButton } from './CommandButton';
@@ -13,20 +14,62 @@ interface SidebarProps {
   onSelectProject: (project: Project) => void;
   onRemoveProject: (id: string) => void;
   onAddProject: () => void;
-  onExecuteCommand: (configName: string) => void;
+  onExecuteCommand: (configIndex: number) => void;
   onEditCommand: (config: ProjectConfig, index: number) => void;
   onDeleteCommand: (configIndex: number) => void;
+  onDuplicateCommand: (config: ProjectConfig, index: number) => void;
   onOpenCustomModal: (editingConfig: { config: ProjectConfig; index: number } | null) => void;
 }
 
-// Helper functions
 const getProjectIcon = (type: string) => {
-  const icons: Record<string, string> = { Python: '🐍', Scala: '🦭', CSharp: '🎯', React: '⚛️' };
+  const icons: Record<string, string> = { Python: '🐍', Scala: '🦭', CSharp: '🎯', React: '⚛️', JavaScript: '🟨' };
   return icons[type] || '📁';
 };
 
 const isRunCmd = (name: string) => ['run', 'dev', 'start'].includes(name);
 const isBuildCmd = (name: string) => ['build', 'compile'].includes(name);
+
+function CollapsibleGroup({ group, configs, onExecuteCommand, onEditCommand, onDeleteCommand, onDuplicateCommand }: {
+  group: string;
+  configs: { config: ProjectConfig; index: number }[];
+  onExecuteCommand: (configIndex: number) => void;
+  onEditCommand: (config: ProjectConfig, index: number) => void;
+  onDeleteCommand: (configIndex: number) => void;
+  onDuplicateCommand: (config: ProjectConfig, index: number) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full flex items-center gap-1.5 px-1 py-1 rounded text-xs font-semibold uppercase hover:bg-[#1a1a2e] transition-colors"
+        style={{ color: '#555878' }}
+      >
+        <Folder size={11} />
+        <span className="flex-1 text-left truncate">{group}</span>
+        <span className="text-[10px]" style={{ color: '#3d3f60' }}>({configs.length})</span>
+        {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
+      </button>
+      {!collapsed && (
+        <div className="space-y-1 mt-1 ml-1">
+          {configs.map(({ config, index }) => (
+            <CommandButton
+              key={`${config.name}-${index}`}
+              config={config}
+              configIndex={index}
+              onRun={onExecuteCommand}
+              onEdit={onEditCommand}
+              onDelete={onDeleteCommand}
+              onDuplicate={onDuplicateCommand}
+              icon={isRunCmd(config.name) ? '▶️' : isBuildCmd(config.name) ? '🔨' : '⚙️'}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Sidebar({
   projects,
@@ -38,20 +81,41 @@ export function Sidebar({
   onExecuteCommand,
   onEditCommand,
   onDeleteCommand,
+  onDuplicateCommand,
   onOpenCustomModal,
 }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
 
-  // Filtrar proyectos por nombre
-  const filteredProjects = projects.filter(p => 
+  const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(projectSearchTerm.toLowerCase())
   );
 
+  // Group configurations by their `group` field
+  const { groupedConfigs, ungroupedConfigs } = useMemo(() => {
+    if (!selectedProject) return { groupedConfigs: new Map<string, { config: ProjectConfig; index: number }[]>(), ungroupedConfigs: [] as { config: ProjectConfig; index: number }[] };
+
+    const grouped = new Map<string, { config: ProjectConfig; index: number }[]>();
+    const ungrouped: { config: ProjectConfig; index: number }[] = [];
+
+    selectedProject.configurations.forEach((config, index) => {
+      const entry = { config, index };
+      if (config.group) {
+        const existing = grouped.get(config.group) || [];
+        existing.push(entry);
+        grouped.set(config.group, existing);
+      } else {
+        ungrouped.push(entry);
+      }
+    });
+
+    return { groupedConfigs: grouped, ungroupedConfigs: ungrouped };
+  }, [selectedProject]);
+
   if (!selectedProject) {
     return (
-      <div 
+      <div
         className={`flex-shrink-0 flex flex-col transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-72'}`}
         style={{ backgroundColor: '#10101c', borderRight: '1px solid #1e1e38' }}
       >
@@ -62,7 +126,7 @@ export function Sidebar({
         >
           {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
-        
+
         {!isCollapsed && (
           <div className="flex-1 flex items-center justify-center flex-col gap-3 p-8 text-center" style={{ color: '#3d3f60' }}>
             <FolderOpen size={36} className="opacity-40" />
@@ -81,16 +145,15 @@ export function Sidebar({
   }
 
   return (
-    <div 
+    <div
       className={`flex-shrink-0 flex flex-col transition-all duration-300 relative ${isCollapsed ? 'w-12' : 'w-72'}`}
-      style={{ 
-        backgroundColor: '#10101c', 
+      style={{
+        backgroundColor: '#10101c',
         borderRight: '1px solid #1e1e38',
         width: isCollapsed ? '3rem' : '18rem',
         overflow: 'hidden'
       }}
     >
-      {/* Botón colapsar/expandir */}
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
         className="absolute right-2 top-2 p-1 rounded hover:bg-[#1f1f35] transition-colors z-10"
@@ -100,19 +163,17 @@ export function Sidebar({
       </button>
 
       {!isCollapsed ? (
-        // Versión expandida - con scroll solo aquí
         <div className="flex-1 overflow-y-auto">
           {/* Project Info */}
           <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
             <div className="text-xs font-semibold uppercase mb-2" style={{ color: '#3d3f60' }}>Project</div>
-            
-            {/* Dropdown selector con buscador */}
+
             <div className="relative mb-2">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                 className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden group relative"
                 style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
-                title={selectedProject.name} // Tooltip con nombre completo
+                title={selectedProject.name}
               >
                 <span className="flex-shrink-0">{getProjectIcon(selectedProject.project_type)}</span>
                 <div className="flex-1 text-left min-w-0">
@@ -128,7 +189,6 @@ export function Sidebar({
 
               {isDropdownOpen && (
                 <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
-                  {/* Buscador dentro del dropdown */}
                   <div className="p-2" style={{ borderBottom: '1px solid #252540' }}>
                     <div className="relative">
                       <Search size={12} className="absolute left-2 top-1/2 transform -translate-y-1/2" style={{ color: '#555878' }} />
@@ -155,8 +215,7 @@ export function Sidebar({
                       )}
                     </div>
                   </div>
-                  
-                  {/* Lista de proyectos filtrados */}
+
                   <div className="max-h-64 overflow-y-auto">
                     {filteredProjects.length > 0 ? (
                       filteredProjects.map(p => (
@@ -164,7 +223,7 @@ export function Sidebar({
                           <button
                             onClick={() => { onSelectProject(p); setIsDropdownOpen(false); setProjectSearchTerm(''); }}
                             className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#1f1f35] overflow-hidden"
-                            title={p.name} // Tooltip con nombre completo
+                            title={p.name}
                           >
                             <span className="flex-shrink-0">{getProjectIcon(p.project_type)}</span>
                             <span className="flex-1 truncate">{p.name}</span>
@@ -188,10 +247,9 @@ export function Sidebar({
               )}
             </div>
 
-            {/* Git branch */}
             {gitBranches[selectedProject.id] && (
               <div className="mt-2">
-                <span 
+                <span
                   className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit max-w-full truncate cursor-help"
                   style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}
                   title={gitBranches[selectedProject.id] || ''}
@@ -202,61 +260,72 @@ export function Sidebar({
             )}
           </div>
 
-          {/* Run Commands */}
-          {selectedProject.configurations.filter(c => isRunCmd(c.name)).length > 0 && (
-            <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-              <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
-                <Play size={11} /> Run
-              </div>
-              <div className="space-y-1.5">
-                {selectedProject.configurations
-                  .filter(c => isRunCmd(c.name))
-                  .map((c) => {
-                    const realIndex = selectedProject.configurations.indexOf(c);
-                    return (
-                      <CommandButton 
-                        key={c.name} 
-                        config={c} 
-                        configIndex={realIndex} 
-                        onRun={onExecuteCommand} 
-                        onEdit={onEditCommand} 
-                        onDelete={onDeleteCommand} 
-                        icon="▶️" 
-                      />
-                    );
-                  })}
-              </div>
-            </div>
-          )}
+          {/* Grouped command sections */}
+          <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
+            {Array.from(groupedConfigs.entries()).map(([group, configs]) => (
+              <CollapsibleGroup
+                key={group}
+                group={group}
+                configs={configs}
+                onExecuteCommand={onExecuteCommand}
+                onEditCommand={onEditCommand}
+                onDeleteCommand={onDeleteCommand}
+                onDuplicateCommand={onDuplicateCommand}
+              />
+            ))}
 
-          {/* Build Commands */}
-          {selectedProject.configurations.filter(c => isBuildCmd(c.name)).length > 0 && (
-            <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-              <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
-                <Hammer size={11} /> Build
-              </div>
-              <div className="space-y-1.5">
-                {selectedProject.configurations
-                  .filter(c => isBuildCmd(c.name))
-                  .map((c) => {
-                    const realIndex = selectedProject.configurations.indexOf(c);
-                    return (
-                      <CommandButton 
-                        key={c.name} 
-                        config={c} 
-                        configIndex={realIndex} 
-                        onRun={onExecuteCommand} 
-                        onEdit={onEditCommand} 
-                        onDelete={onDeleteCommand} 
-                        icon="🔨" 
+            {/* Ungrouped Run commands */}
+            {ungroupedConfigs.filter(c => isRunCmd(c.config.name)).length > 0 && (
+              <>
+                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
+                  <Play size={11} /> Run
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  {ungroupedConfigs
+                    .filter(c => isRunCmd(c.config.name))
+                    .map(({ config, index }) => (
+                      <CommandButton
+                        key={config.name}
+                        config={config}
+                        configIndex={index}
+                        onRun={onExecuteCommand}
+                        onEdit={onEditCommand}
+                        onDelete={onDeleteCommand}
+                        onDuplicate={onDuplicateCommand}
+                        icon="▶️"
                       />
-                    );
-                  })}
-              </div>
-            </div>
-          )}
+                    ))}
+                </div>
+              </>
+            )}
 
-          {/* Custom Commands */}
+            {/* Ungrouped Build commands */}
+            {ungroupedConfigs.filter(c => isBuildCmd(c.config.name)).length > 0 && (
+              <>
+                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
+                  <Hammer size={11} /> Build
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  {ungroupedConfigs
+                    .filter(c => isBuildCmd(c.config.name))
+                    .map(({ config, index }) => (
+                      <CommandButton
+                        key={config.name}
+                        config={config}
+                        configIndex={index}
+                        onRun={onExecuteCommand}
+                        onEdit={onEditCommand}
+                        onDelete={onDeleteCommand}
+                        onDuplicate={onDuplicateCommand}
+                        icon="🔨"
+                      />
+                    ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Ungrouped Custom Commands + Add button */}
           <div className="p-4 flex-1">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs font-semibold uppercase flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
@@ -271,23 +340,21 @@ export function Sidebar({
               </button>
             </div>
             <div className="space-y-1.5">
-              {selectedProject.configurations
-                .filter(c => !isRunCmd(c.name) && !isBuildCmd(c.name))
-                .map((c) => {
-                  const realIndex = selectedProject.configurations.indexOf(c);
-                  return (
-                    <CommandButton 
-                      key={c.name} 
-                      config={c} 
-                      configIndex={realIndex} 
-                      onRun={onExecuteCommand} 
-                      onEdit={onEditCommand} 
-                      onDelete={onDeleteCommand} 
-                      icon="⚙️" 
-                    />
-                  );
-                })}
-              {selectedProject.configurations.filter(c => !isRunCmd(c.name) && !isBuildCmd(c.name)).length === 0 && (
+              {ungroupedConfigs
+                .filter(c => !isRunCmd(c.config.name) && !isBuildCmd(c.config.name))
+                .map(({ config, index }) => (
+                  <CommandButton
+                    key={config.name}
+                    config={config}
+                    configIndex={index}
+                    onRun={onExecuteCommand}
+                    onEdit={onEditCommand}
+                    onDelete={onDeleteCommand}
+                    onDuplicate={onDuplicateCommand}
+                    icon="⚙️"
+                  />
+                ))}
+              {ungroupedConfigs.filter(c => !isRunCmd(c.config.name) && !isBuildCmd(c.config.name)).length === 0 && (
                 <div className="text-xs text-center py-4" style={{ color: '#3d3f60' }}>
                   No custom commands yet
                 </div>
@@ -296,9 +363,8 @@ export function Sidebar({
           </div>
         </div>
       ) : (
-        /* Versión colapsada - SIN SCROLL, todo visible */
+        /* Collapsed version */
         <div className="flex flex-col items-center py-4 gap-3" style={{ overflow: 'visible' }}>
-          {/* Botón Add Project */}
           <button
             onClick={onAddProject}
             className="mt-6 p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
@@ -310,8 +376,7 @@ export function Sidebar({
               Add project
             </span>
           </button>
-          
-          {/* Botón Add Custom Command */}
+
           <button
             onClick={() => onOpenCustomModal(null)}
             className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
@@ -323,12 +388,10 @@ export function Sidebar({
               Add command
             </span>
           </button>
-          
-          {/* Separador */}
+
           <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
-          
-          {/* Icono del proyecto con tooltip */}
-          <div 
+
+          <div
             className="text-2xl relative group cursor-help"
             title={selectedProject.name}
           >
@@ -338,10 +401,9 @@ export function Sidebar({
               {selectedProject.name}
             </span>
           </div>
-          
-          {/* Rama git (si existe) - versión compacta con tooltip */}
+
           {gitBranches[selectedProject.id] && (
-            <div 
+            <div
               className="px-1 py-0.5 rounded text-[10px] font-mono truncate max-w-full text-center cursor-help relative group"
               style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
               title={gitBranches[selectedProject.id] || ''}
@@ -353,32 +415,29 @@ export function Sidebar({
               </span>
             </div>
           )}
-          
-          {/* Separador */}
+
           <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
-          
-          {/* Comandos rápidos - limitados a 4 para no desbordar */}
+
           {selectedProject.configurations.slice(0, 4).map((c, i) => (
             <button
               key={i}
-              onClick={() => onExecuteCommand(c.name)}
+              onClick={() => onExecuteCommand(i)}
               className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
               title={c.name}
             >
-              {isRunCmd(c.name) ? <Play size={16} style={{ color: '#4ade80' }} /> : 
-               isBuildCmd(c.name) ? <Hammer size={16} style={{ color: '#fbbf24' }} /> : 
+              {isRunCmd(c.name) ? <Play size={16} style={{ color: '#4ade80' }} /> :
+               isBuildCmd(c.name) ? <Hammer size={16} style={{ color: '#fbbf24' }} /> :
                <Settings size={16} style={{ color: '#6e7fff' }} />}
-              
+
               <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
                     style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
                 {c.name}
               </span>
             </button>
           ))}
-          
-          {/* Indicador de más comandos */}
+
           {selectedProject.configurations.length > 4 && (
-            <div 
+            <div
               className="text-[10px] px-1 py-0.5 rounded mt-1 cursor-help relative group"
               style={{ backgroundColor: '#1a1a2e', color: '#555878' }}
               title={`${selectedProject.configurations.length - 4} more commands`}

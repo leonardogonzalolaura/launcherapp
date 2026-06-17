@@ -110,6 +110,7 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
                         requires_build: false,
                         build_command: None,
                         custom_paths: CustomPaths::default(),
+                        group: None,
                     });
                 }
             }
@@ -129,6 +130,7 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
                     sbt_path: None,
                     ..Default::default()
                 },
+                group: None,
             });
             configs.push(ProjectConfig {
                 name: "compile".to_string(),
@@ -138,6 +140,7 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
                 requires_build: true,
                 build_command: None,
                 custom_paths: CustomPaths::default(),
+                group: None,
             });
         }
         ProjectType::CSharp => {
@@ -153,6 +156,17 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
                     requires_build: true,
                     build_command: Some(format!("dotnet build {}", csproj.display())),
                     custom_paths: CustomPaths::default(),
+                    group: None,
+                });
+                configs.push(ProjectConfig {
+                    name: "build".to_string(),
+                    command: format!("dotnet build {}", csproj.display()),
+                    working_dir: project_path.clone(),
+                    env_vars: HashMap::new(),
+                    requires_build: true,
+                    build_command: None,
+                    custom_paths: CustomPaths::default(),
+                    group: None,
                 });
             }
         }
@@ -166,6 +180,21 @@ fn create_default_configs(detected: &DetectedInfo, project_path: &PathBuf) -> Ve
                     requires_build: cmd == "build",
                     build_command: if cmd == "build" { None } else { Some("npm run build".to_string()) },
                     custom_paths: CustomPaths::default(),
+                    group: None,
+                });
+            }
+        }
+        ProjectType::JavaScript => {
+            for cmd in &detected.available_commands {
+                configs.push(ProjectConfig {
+                    name: cmd.clone(),
+                    command: format!("npm run {}", cmd),
+                    working_dir: project_path.clone(),
+                    env_vars: HashMap::new(),
+                    requires_build: cmd == "build",
+                    build_command: if cmd == "build" { None } else { Some("npm run build".to_string()) },
+                    custom_paths: CustomPaths::default(),
+                    group: None,
                 });
             }
         }

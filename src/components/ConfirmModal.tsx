@@ -1,0 +1,80 @@
+import { AlertTriangle, X } from 'lucide-react';
+
+interface ConfirmModalProps {
+  title: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  confirmStyle?: 'danger' | 'primary';
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export function ConfirmModal({
+  title,
+  message,
+  confirmLabel = 'Eliminar',
+  cancelLabel = 'Cancelar',
+  confirmStyle = 'danger',
+  onConfirm,
+  onCancel,
+}: ConfirmModalProps) {
+  const confirmColor = confirmStyle === 'danger'
+    ? { bg: '#ef4444', hover: '#dc2626' }
+    : { bg: '#6e7fff', hover: '#8090ff' };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center"
+      style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl overflow-hidden shadow-2xl"
+        style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #252540' }}>
+          <div className="flex items-center gap-3">
+            <AlertTriangle size={18} style={{ color: '#f87171' }} />
+            <span className="font-semibold">{title}</span>
+          </div>
+          <button
+            onClick={onCancel}
+            className="rounded p-1 transition-colors"
+            style={{ color: '#555878' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#e2e4f0'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#555878'; }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4">
+          <p className="text-sm" style={{ color: '#8890b0' }}>{message}</p>
+        </div>
+
+        <div className="flex justify-end gap-3 px-5 py-4" style={{ borderTop: '1px solid #252540' }}>
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-md text-sm transition-colors"
+            style={{ color: '#555878', border: '1px solid #2e2e50' }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
+          >
+            {cancelLabel}
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 rounded-md text-sm font-semibold text-white transition-all"
+            style={{ backgroundColor: confirmColor.bg }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = confirmColor.hover; }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = confirmColor.bg; }}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

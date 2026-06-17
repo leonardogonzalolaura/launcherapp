@@ -13,6 +13,7 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
   const [name, setName] = useState(editingConfig?.config.name ?? '');
   const [command, setCommand] = useState(editingConfig?.config.command ?? '');
   const [workingDir, setWorkingDir] = useState(editingConfig?.config.working_dir ?? '');
+  const [group, setGroup] = useState(editingConfig?.config.group ?? '');
   const [envVarsText, setEnvVarsText] = useState(
     editingConfig
       ? Object.entries(editingConfig.config.env_vars).map(([k, v]) => `${k}=${v}`).join('\n')
@@ -48,6 +49,7 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
         requires_build: false,
         build_command: undefined,
         custom_paths: {},
+        group: group.trim() || undefined,
       };
       await onSave(projectId, config, editingConfig?.index);
       onClose();
@@ -132,6 +134,24 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
               onBlur={e => (e.target.style.borderColor = '#2e2e50')}
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+              Carpeta / Grupo (opcional)
+            </label>
+            <input
+              value={group}
+              onChange={e => setGroup(e.target.value)}
+              placeholder="e.g. Backend, Frontend, Utils"
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors"
+              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              onFocus={e => (e.target.style.borderColor = '#6e7fff')}
+              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+            />
+            <p className="text-xs mt-1" style={{ color: '#555878' }}>
+              Los comandos con la misma carpeta se agruparán en la sidebar.
+            </p>
           </div>
 
           <div>

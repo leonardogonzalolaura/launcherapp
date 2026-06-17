@@ -10,6 +10,8 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { CustomCommandModal } from './components/CustomCommandModal';
 import { ConsoleTab } from './components/ConsoleTab';
 import { Sidebar } from './components/Sidebar';
+import { ToastProvider, useToast } from './components/Toast';
+import { ConfirmModal } from './components/ConfirmModal';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -52,7 +54,8 @@ const saveSelectedProjectIdToStorage = (projectId: string | null) => {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
-function App() {
+function AppContent() {
+  const { addToast } = useToast();
   const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [processTabs, setProcessTabs] = useState<ProcessTab[]>([]);
@@ -61,6 +64,7 @@ function App() {
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [editingConfig, setEditingConfig] = useState<{ config: ProjectConfig; index: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ configIndex: number; configName: string } | null>(null);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
 
@@ -259,11 +263,13 @@ const handleClearLogs = (processId: string) => {
   );
 };
   // ─── Execute ─────────────────────────────────────────────────────────────
-  const handleExecute = async (configName: string) => {
+  const handleExecute = async (configIndex: number) => {
     if (!selectedProject) return;
+    const config = selectedProject.configurations[configIndex];
+    if (!config) return;
     try {
       const [info, branch] = await Promise.all([
-        spawnProjectCommand(selectedProject.id, configName),
+        spawnProjectCommand(selectedProject.id, configIndex),
         getGitBranch(selectedProject.path),
       ]);
       const newTab: ProcessTab = {
@@ -271,6 +277,8 @@ const handleClearLogs = (processId: string) => {
         project_id: selectedProject.id,
         project_name: info.project_name,
         config_name: info.config_name,
+        config_index: configIndex,
+        config_group: config.group,
         status: 'running',
         logs: [],
         started_at: info.started_at,
@@ -290,8 +298,9 @@ const handleClearLogs = (processId: string) => {
 
     try {
       const project = projects.find(p => p.id === tabToRerun.project_id);
+      const configIndex = tabToRerun.config_index;
       const [info, branch] = await Promise.all([
-        spawnProjectCommand(tabToRerun.project_id, tabToRerun.config_name),
+        spawnProjectCommand(tabToRerun.project_id, configIndex),
         project ? getGitBranch(project.path) : Promise.resolve(null),
       ]);
       setProcessTabs(prev =>
@@ -352,11 +361,41 @@ const handleClearLogs = (processId: string) => {
     setSelectedProject(updatedProject);
   };
 
-  const handleDeleteConfig = async (configIndex: number) => {
+  const handleDeleteConfig = (configIndex: number) => {
     if (!selectedProject) return;
-    const updatedProject = await deleteProjectConfig(selectedProject.id, configIndex);
-    setProjects(prev => prev.map(p => p.id === selectedProject.id ? updatedProject : p));
-    setSelectedProject(updatedProject);
+    const configName = selectedProject.configurations[configIndex]?.name ?? 'unknown';
+    setConfirmDelete({ configIndex, configName });
+  };
+
+  const confirmDeleteConfig = async () => {
+    if (!selectedProject || !confirmDelete) return;
+    try {
+      const updatedProject = await deleteProjectConfig(selectedProject.id, confirmDelete.configIndex);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? updatedProject : p));
+      setSelectedProject(updatedProject);
+      addToast({ type: 'success', message: `Comando "${confirmDelete.configName}" eliminado` });
+    } catch (e) {
+      addToast({ type: 'error', message: `Error al eliminar: ${e}` });
+    } finally {
+      setConfirmDelete(null);
+    }
+  };
+
+  const handleDuplicateConfig = async (config: ProjectConfig, _index: number) => {
+    if (!selectedProject) return;
+    const duplicated: ProjectConfig = {
+      ...config,
+      name: `${config.name} (copia)`,
+      is_custom: true,
+    };
+    try {
+      const updatedProject = await addCustomCommand(selectedProject.id, duplicated);
+      setProjects(prev => prev.map(p => p.id === selectedProject.id ? updatedProject : p));
+      setSelectedProject(updatedProject);
+      addToast({ type: 'success', message: `Comando "${config.name}" duplicado como "${duplicated.name}"` });
+    } catch (e) {
+      addToast({ type: 'error', message: `Error al duplicar: ${e}` });
+    }
   };
 
   const handleRemoveProject = async (id: string) => {
@@ -418,6 +457,13 @@ const handleClearLogs = (processId: string) => {
                 <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
                 <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
                 <span style={{ color: '#4a4a70' }}>·</span>
+                <span className="text-[10px] truncate max-w-[80px]">{tab.config_name}</span>
+                {tab.config_group && (
+                  <span className="text-[9px] px-1 py-0.5 rounded" style={{ backgroundColor: '#1e1e38', color: '#555878' }}>
+                    {tab.config_group}
+                  </span>
+                )}
+                <span style={{ color: '#4a4a70' }}>·</span>
                 {(gitBranches[tab.project_id] ?? tab.git_branch) && (
                   <span className="flex items-center gap-0.5" style={{ color: '#a78bfa', fontSize: '10px' }}>
                     ⎇ {gitBranches[tab.project_id] ?? tab.git_branch}
@@ -456,6 +502,7 @@ const handleClearLogs = (processId: string) => {
           setShowCustomModal(true);
         }}
         onDeleteCommand={handleDeleteConfig}
+        onDuplicateCommand={handleDuplicateConfig}
         onOpenCustomModal={(editingConfig) => {
           setEditingConfig(editingConfig);
           setShowCustomModal(true);
@@ -483,10 +530,10 @@ const handleClearLogs = (processId: string) => {
               </div>
               {selectedProject && (
                 <div className="flex gap-3 mt-2">
-                  {selectedProject.configurations.slice(0, 3).map(c => (
+                  {selectedProject.configurations.slice(0, 3).map((c, i) => (
                     <button
-                      key={c.name}
-                      onClick={() => handleExecute(c.name)}
+                      key={`${c.name}-${i}`}
+                      onClick={() => handleExecute(i)}
                       className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
                       style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50', color: '#8890b0' }}
                       onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; e.currentTarget.style.color = '#e2e4f0'; }}
@@ -510,6 +557,19 @@ const handleClearLogs = (processId: string) => {
           editingConfig={editingConfig}
           onSave={handleSaveCommand}
           onClose={() => { setShowCustomModal(false); setEditingConfig(null); }}
+        />
+      )}
+
+      {/* Confirm Delete Command Modal */}
+      {confirmDelete && selectedProject && (
+        <ConfirmModal
+          title="Eliminar comando"
+          message={`¿Estás seguro de eliminar el comando "${confirmDelete.configName}"?`}
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
+          confirmStyle="danger"
+          onConfirm={confirmDeleteConfig}
+          onCancel={() => setConfirmDelete(null)}
         />
       )}
 
@@ -545,4 +605,13 @@ const handleClearLogs = (processId: string) => {
     </div>
   );
 }
+
+function App() {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
+  );
+}
+
 export default App;
