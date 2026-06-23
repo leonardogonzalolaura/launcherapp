@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Square, X, Play, Trash, Copy, ArrowDown, Filter, Globe } from 'lucide-react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Square, X, Play, Trash, Copy, ArrowDown, Filter, Globe, Search, SearchX } from 'lucide-react';
 import { ProcessTab } from '../types';
 import { JsonViewer, isJsonLine } from './JsonViewer';
 import { ApiExplorer } from './ApiExplorer';
@@ -337,12 +337,55 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
   const [showFilterMenu, setShowFilterMenu] = useState(false);
   const [showApiExplorer, setShowApiExplorer] = useState(false);
   const [isApiExplorerMaximized, setIsApiExplorerMaximized] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [elapsed, setElapsed] = useState('00:00:00');
 
   useEffect(() => {
     if (autoScroll) {
       bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [tab.logs, autoScroll]);
+
+  useEffect(() => {
+    if (showSearch && searchInputRef.current) {
+      searchInputRef.current.focus();
+    }
+  }, [showSearch]);
+
+  useEffect(() => {
+    const updateElapsed = () => {
+      if (tab.status !== 'running') return;
+      const start = new Date(tab.started_at).getTime();
+      const now = Date.now();
+      const diff = Math.floor((now - start) / 1000);
+      const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+      const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+      const s = String(diff % 60).padStart(2, '0');
+      setElapsed(`${h}:${m}:${s}`);
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [tab.started_at, tab.status]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setShowSearch(prev => !prev);
+        if (!showSearch) setSearchQuery('');
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Escape') {
+        setShowSearch(false);
+        setSearchQuery('');
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showSearch]);
 
   // Filtrar logs según selección
   const filteredLogs = tab.logs.filter(line => {
@@ -369,9 +412,42 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
     classifyLine(l.content, l.output_type, tab.project_type).category === 'success'
   ).length;
 
+  // Búsqueda en logs
+  const searchFilteredLogs = useMemo(() => {
+    if (!searchQuery.trim()) return filteredLogs;
+    const q = searchQuery.toLowerCase();
+    return filteredLogs.filter(l => l.content.toLowerCase().includes(q));
+  }, [filteredLogs, searchQuery]);
+
+  const searchMatchCount = searchQuery.trim()
+    ? searchFilteredLogs.reduce((sum, l) => {
+        const q = searchQuery.toLowerCase();
+        const content = l.content.toLowerCase();
+        let count = 0, pos = 0;
+        while ((pos = content.indexOf(q, pos)) !== -1) {
+          count++;
+          pos += q.length;
+        }
+        return sum + count;
+      }, 0)
+    : 0;
+
+  // Highlight text matches in content
+  const highlightText = (content: string): React.ReactNode => {
+    if (!searchQuery.trim()) return content;
+    const q = searchQuery.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const parts = content.split(new RegExp(`(${q})`, 'gi'));
+    if (parts.length === 1) return content;
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchQuery.toLowerCase()
+        ? <span key={i} className="rounded" style={{ backgroundColor: 'rgba(234,179,8,0.35)', color: '#fef08a', outline: '1px solid rgba(234,179,8,0.5)' }}>{part}</span>
+        : part
+    );
+  };
+
   // Copiar todos los logs
   const copyAllLogs = async () => {
-    const content = filteredLogs.map(log => log.content).join('\n');
+    const content = searchFilteredLogs.map(log => log.content).join('\n');
     await navigator.clipboard.writeText(content);
   };
 
@@ -387,10 +463,14 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
     <div className="h-full flex flex-col">
       {/* Tab header - simplificado */}
       <div className="flex items-center justify-between px-4 py-1.5 flex-shrink-0" style={{ backgroundColor: '#13131f', borderBottom: '1px solid #252540' }}>
-        {/* Left side - solo status + stats */}
-        <div className="flex items-center gap-2">
-          <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
-          {/* Estadísticas en tiempo real */}
+        {/* Left side - status + timer + stats */}
+        <div className="flex items-center gap-3">
+          <span className={tab.status === 'running' ? 'animate-pulse-dot' : ''} style={{ color: statusColor, fontSize: '10px', lineHeight: 1 }}>●</span>
+          {tab.status === 'running' && (
+            <span className="font-mono text-[11px]" style={{ color: '#555878' }}>
+              ⏱ {elapsed}
+            </span>
+          )}
           {(errorCount > 0 || warningCount > 0 || successCount > 0) && (
             <div className="flex items-center gap-1.5 text-xs">
               {errorCount > 0 && (
@@ -412,8 +492,52 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           )}
         </div>
 
-        {/* Right side - Botones de acción */}
+        {/* Right side - search + action buttons */}
         <div className="flex items-center gap-2">
+          {/* Search input */}
+          {showSearch && (
+            <div className="flex items-center gap-1" style={{ backgroundColor: '#1a1a2e', border: '1px solid #3a4199', borderRadius: '4px', padding: '2px 6px' }}>
+              <Search size={11} style={{ color: '#555878', flexShrink: 0 }} />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Buscar en logs..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="bg-transparent text-xs outline-none min-w-[120px]"
+                style={{ color: '#e2e4f0' }}
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); }
+                }}
+              />
+              {searchQuery && (
+                <>
+                  <span className="text-[10px] whitespace-nowrap" style={{ color: '#555878' }}>
+                    {searchMatchCount} match{searchMatchCount !== 1 ? 'es' : ''}
+                  </span>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="p-0.5 rounded hover:bg-[#1f1f35] transition-colors"
+                    style={{ color: '#555878' }}
+                  >
+                    <SearchX size={11} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {/* Botón de búsqueda */}
+          {!showSearch && (
+            <button
+              onClick={() => setShowSearch(true)}
+              className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
+              style={{ color: '#555878' }}
+              title="Buscar en logs (Ctrl+F)"
+            >
+              <Search size={12} />
+            </button>
+          )}
+
           {/* Botón de filtro */}
           <div className="relative">
             <button
@@ -555,7 +679,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
         {/* Log output */}
         {(!showApiExplorer || !isApiExplorerMaximized) && (
           <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" style={{ backgroundColor: '#080810' }}>
-            {filteredLogs.length === 0 ? (
+            {searchFilteredLogs.length === 0 ? (
               <div className="flex items-center justify-center h-full text-center" style={{ color: '#3d3f60' }}>
                 <div className="flex flex-col items-center gap-2">
                   <Trash size={24} className="opacity-30" />
@@ -563,10 +687,13 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
                   {logFilter !== 'all' && (
                     <p className="text-xs">Try changing the filter</p>
                   )}
+                  {searchQuery && (
+                    <p className="text-xs">No matches for "{searchQuery}"</p>
+                  )}
                 </div>
               </div>
             ) : (
-              filteredLogs.map((line, idx) => {
+              searchFilteredLogs.map((line, idx) => {
                 const classification = classifyLine(line.content, line.output_type, tab.project_type);
                 const isError = classification.category === 'error';
                 const isWarning = classification.category === 'warning';
@@ -575,7 +702,12 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
                 return (
                   <div 
                     key={line.id} 
-                    className={`flex gap-3 mb-0.5 leading-5 hover:bg-gray-800/20 rounded transition-colors ${isError ? 'border-l-2 border-red-500 pl-1' : ''} ${isWarning ? 'border-l-2 border-yellow-500 pl-1' : ''}`}
+                    className="flex gap-3 mb-0.5 leading-5 rounded transition-colors hover:bg-gray-800/20"
+                    style={{
+                      borderLeft: isError ? '2px solid #f87171' : isWarning ? '2px solid #fbbf24' : '2px solid transparent',
+                      paddingLeft: '6px',
+                      backgroundColor: isError ? 'rgba(248,113,113,0.06)' : isWarning ? 'rgba(251,191,36,0.06)' : 'transparent',
+                    }}
                   >
                     {/* Número de línea con tooltip */}
                     <span 
@@ -593,9 +725,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
                     >
                       {new Date(line.timestamp).toLocaleTimeString('en', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                     </span>
-                    {/* Contenido con URLs clickeables y JSON viewer */}
+                    {/* Contenido con URLs clickeables, JSON viewer y highlight de búsqueda */}
                     <span className="whitespace-pre-wrap break-all flex-1" style={{ color: lineColor }}>
-                      {renderContentWithLinks(line.content)}
+                      {searchQuery.trim() ? highlightText(line.content) : renderContentWithLinks(line.content)}
                     </span>
                   </div>
                 );

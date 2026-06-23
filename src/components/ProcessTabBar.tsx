@@ -21,6 +21,7 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
           <button
             key={tab.process_id}
             onClick={() => onSelectTab(tab.process_id)}
+            title={`${tab.project_name} · ${tab.config_name}${tab.config_group ? ` [${tab.config_group}]` : ''}${(gitBranches[tab.project_id] ?? tab.git_branch) ? ` ⎇ ${gitBranches[tab.project_id] ?? tab.git_branch}` : ''}`}
             className="flex items-center gap-1.5 px-3 py-1 rounded text-xs flex-shrink-0 transition-all"
             style={{
               backgroundColor: isActive ? '#1f1f35' : 'transparent',
@@ -28,7 +29,7 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
               color: isActive ? '#e2e4f0' : '#555878',
             }}
           >
-            <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
+            <span className={tab.status === 'running' ? 'animate-pulse-dot' : ''} style={{ color: statusColor, fontSize: '10px', lineHeight: 1 }}>●</span>
             <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
             <span style={{ color: '#4a4a70' }}>·</span>
             <span className="text-[10px] truncate max-w-[80px]">{tab.config_name}</span>

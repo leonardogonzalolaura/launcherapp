@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
   Plus, Terminal,
-  Trash2, ChevronRight, Loader2
+  Trash2, ChevronRight, Loader2, MoreHorizontal
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
@@ -66,6 +66,7 @@ function AppContent() {
   const [editingConfig, setEditingConfig] = useState<{ config: ProjectConfig; index: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ configIndex: number; configName: string } | null>(null);
+  const [showFooterMenu, setShowFooterMenu] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -548,17 +549,17 @@ const handleClearLogs = (processId: string) => {
         />
       )}
 
-      {/* Footer con estadísticas y acciones */}
+      {/* Footer */}
       <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid #1e1e38' }}>
-        <div className="flex gap-4" style={{ color: '#555878' }}>
-          <span>📁 {projects.length} proyectos</span>
-          <span>🖥️ {processTabs.length} procesos activos</span>
+        <div className="flex items-center gap-4" style={{ color: '#555878' }}>
+          <span className="flex items-center gap-1">📁 {projects.length}</span>
+          <span className="flex items-center gap-1">🖥️ {processTabs.length}</span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setTabPosition(prev => prev === 'top' ? 'bottom' : 'top')}
-            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors text-[10px] font-mono"
+            className="px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors text-[10px] font-mono"
             style={{ color: '#555878' }}
             title={tabPosition === 'top' ? 'Mover tabs abajo' : 'Mover tabs arriba'}
           >
@@ -574,16 +575,40 @@ const handleClearLogs = (processId: string) => {
             <span>Agregar</span>
           </button>
 
-          {projects.length > 0 && (
+          {/* Menú de acciones (gear) */}
+          <div className="relative">
             <button
-              onClick={handleClearAllProjects}
-              className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#2d2d4a] transition-colors"
-              style={{ color: '#fca5a5' }}
+              onClick={() => setShowFooterMenu(!showFooterMenu)}
+              className="p-1 rounded hover:bg-[#1f1f35] transition-colors"
+              style={{ color: '#555878' }}
+              title="Más acciones"
             >
-              <Trash2 size={12} />
-              <span>Limpiar projectos registrados</span>
+              <MoreHorizontal size={14} />
             </button>
-          )}
+            {showFooterMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowFooterMenu(false)} />
+                <div
+                  className="absolute bottom-full right-0 mb-1 w-52 rounded-md shadow-xl z-20 overflow-hidden"
+                  style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}
+                >
+                  {projects.length > 0 && (
+                    <button
+                      onClick={() => { setShowFooterMenu(false); handleClearAllProjects(); }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-[#1f1f35] transition-colors"
+                      style={{ color: '#f87171' }}
+                    >
+                      <Trash2 size={12} />
+                      <span>Limpiar todos los proyectos</span>
+                    </button>
+                  )}
+                  <div className="px-3 py-1.5 text-[10px]" style={{ color: '#3d3f60', borderTop: '1px solid #252540' }}>
+                    HorseLaunch v0.2.1
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
