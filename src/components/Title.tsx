@@ -1,0 +1,88 @@
+import { useState, useEffect } from 'react';
+import { Minus, Square, Copy, X, Terminal } from 'lucide-react';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+
+interface TitleProps {
+  tabPosition: 'top' | 'bottom';
+  onToggleTabPosition: () => void;
+}
+
+export function Title({ tabPosition, onToggleTabPosition }: TitleProps) {
+  const [isMaximized, setIsMaximized] = useState(false);
+  const appWindow = getCurrentWindow();
+
+  useEffect(() => {
+    appWindow.isMaximized().then(setIsMaximized);
+
+    const unlistenResize = appWindow.onResized(async () => {
+      const maximized = await appWindow.isMaximized();
+      setIsMaximized(maximized);
+    });
+
+    return () => {
+      unlistenResize.then(fn => fn());
+    };
+  }, []);
+
+  const handleMinimize = () => appWindow.minimize();
+  const handleToggleMaximize = () => appWindow.toggleMaximize();
+  const handleClose = () => appWindow.close();
+
+  return (
+    <div
+      data-tauri-drag-region
+      className="flex items-center gap-3 px-4 flex-shrink-0 select-none"
+      style={{ backgroundColor: '#0a0a10', borderBottom: '1px solid #1e1e38', height: '36px' }}
+    >
+      <div data-tauri-drag-region className="flex items-center gap-2">
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#1a1a2e' }}>
+          <Terminal size={12} style={{ color: '#6e7fff' }} />
+        </div>
+        <span className="text-sm font-semibold tracking-wide" style={{ color: '#e2e4f0', fontSize: '13px' }}>
+          HorseLaunch
+        </span>
+        <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#13131f', color: '#555878', border: '1px solid #252540' }}>
+          v0.2.1
+        </span>
+      </div>
+
+      <div data-tauri-drag-region className="flex-1" />
+
+      <button
+        onClick={onToggleTabPosition}
+        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all hover:bg-[#1f1f35]"
+        style={{ color: '#555878' }}
+        title={tabPosition === 'top' ? 'Tabs abajo del console' : 'Tabs arriba del console'}
+      >
+        {tabPosition === 'top' ? '▼ Tabs' : '▲ Tabs'}
+      </button>
+
+      <div className="flex items-center ml-2" style={{ gap: '2px' }}>
+        <button
+          onClick={handleMinimize}
+          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-[#1f1f35]"
+          style={{ color: '#8888a8' }}
+          title="Minimizar"
+        >
+          <Minus size={13} />
+        </button>
+        <button
+          onClick={handleToggleMaximize}
+          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-[#1f1f35]"
+          style={{ color: '#8888a8' }}
+          title={isMaximized ? 'Restaurar' : 'Maximizar'}
+        >
+          {isMaximized ? <Copy size={11} /> : <Square size={11} />}
+        </button>
+        <button
+          onClick={handleClose}
+          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-red-500/80 hover:text-white"
+          style={{ color: '#8888a8' }}
+          title="Cerrar"
+        >
+          <X size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}

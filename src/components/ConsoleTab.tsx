@@ -3,6 +3,7 @@ import { Square, X, Play, Trash, Copy, ArrowDown, Filter, Globe } from 'lucide-r
 import { ProcessTab } from '../types';
 import { JsonViewer, isJsonLine } from './JsonViewer';
 import { ApiExplorer } from './ApiExplorer';
+import { ProcessTabBar } from './ProcessTabBar';
 
 interface ConsoleTabProps {
   tab: ProcessTab;
@@ -11,6 +12,12 @@ interface ConsoleTabProps {
   onClose: (processId: string) => void;
   onRerun: (processId: string) => void;
   onClear: (processId: string) => void;
+  tabPosition: 'top' | 'bottom';
+  allTabs: ProcessTab[];
+  activeTabId: string | null;
+  onSelectTab: (tabId: string) => void;
+  onCloseTab: (tabId: string) => void;
+  gitBranches: Record<string, string | null>;
 }
 
 // Detectar líneas de éxito (transversal a todos los lenguajes)
@@ -323,7 +330,7 @@ const renderContentWithLinks = (content: string) => {
   });
 };
 
-export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onClear }: ConsoleTabProps) {
+export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition, allTabs, activeTabId, onSelectTab, onCloseTab, gitBranches }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warning' | 'success'>('all');
@@ -378,67 +385,26 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
 
   return (
     <div className="h-full flex flex-col">
-      {/* Tab header */}
-      <div className="flex items-center justify-between px-4 py-2 flex-shrink-0" style={{ backgroundColor: '#13131f', borderBottom: '1px solid #252540' }}>
-        {/* Left side - Info del proyecto */}
-        <div className="flex items-center gap-3">
+      {/* Tab header - simplificado */}
+      <div className="flex items-center justify-between px-4 py-1.5 flex-shrink-0" style={{ backgroundColor: '#13131f', borderBottom: '1px solid #252540' }}>
+        {/* Left side - solo status + stats */}
+        <div className="flex items-center gap-2">
           <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
-          <span className="font-mono text-sm font-medium">{tab.project_name}</span>
-          <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: '#1a1a2e', color: '#6e7fff', border: '1px solid #2e2e50' }}>
-            {tab.config_name}
-          </span>
-          {tab.config_group && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: '#1e1e38', color: '#8890b0', border: '1px solid #2e2e50' }}>
-              📁 {tab.config_group}
-            </span>
-          )}
-          {(liveGitBranch ?? tab.git_branch) && (
-            <span
-              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded font-mono"
-              style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #4c1d95' }}
-              title={`Rama git: ${liveGitBranch ?? tab.git_branch}`}
-            >
-              🌿 {liveGitBranch ?? tab.git_branch}
-            </span>
-          )}
-          
-          {/* Badge del tipo de proyecto */}
-          {tab.project_type && (
-            <span 
-              className="text-xs px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: '#1a1a2e', color: '#8890b0', border: '1px solid #2e2e50' }}
-            >
-              {tab.project_type}
-            </span>
-          )}
-          
           {/* Estadísticas en tiempo real */}
           {(errorCount > 0 || warningCount > 0 || successCount > 0) && (
-            <div className="flex items-center gap-2 ml-2 text-xs">
+            <div className="flex items-center gap-1.5 text-xs">
               {errorCount > 0 && (
-                <span 
-                  style={{ color: '#f87171' }} 
-                  className="flex items-center gap-0.5 cursor-help"
-                  title={`${errorCount} error(es) encontrado(s)`}
-                >
+                <span style={{ color: '#f87171' }} className="flex items-center gap-0.5 cursor-help" title={`${errorCount} error(es)`}>
                   🔴 {errorCount}
                 </span>
               )}
               {warningCount > 0 && (
-                <span 
-                  style={{ color: '#fbbf24' }} 
-                  className="flex items-center gap-0.5 cursor-help"
-                  title={`${warningCount} advertencia(s)`}
-                >
+                <span style={{ color: '#fbbf24' }} className="flex items-center gap-0.5 cursor-help" title={`${warningCount} advertencia(s)`}>
                   🟡 {warningCount}
                 </span>
               )}
               {successCount > 0 && (
-                <span 
-                  style={{ color: '#4ade80' }} 
-                  className="flex items-center gap-0.5 cursor-help"
-                  title={`${successCount} éxito(s)`}
-                >
+                <span style={{ color: '#4ade80' }} className="flex items-center gap-0.5 cursor-help" title={`${successCount} éxito(s)`}>
                   🟢 {successCount}
                 </span>
               )}
@@ -573,6 +539,17 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
         </div>
       </div>
 
+      {/* Tabs arriba */}
+      {tabPosition === 'top' && (
+        <ProcessTabBar
+          tabs={allTabs}
+          activeTabId={activeTabId}
+          gitBranches={gitBranches}
+          onSelectTab={onSelectTab}
+          onCloseTab={onCloseTab}
+        />
+      )}
+
       {/* Split Layout Container */}
       <div className="flex-1 flex overflow-hidden">
         {/* Log output */}
@@ -642,6 +619,17 @@ export function ConsoleTab({ tab, liveGitBranch, onStop, onClose, onRerun, onCle
           </div>
         )}
       </div>
+
+      {/* Tabs abajo */}
+      {tabPosition === 'bottom' && (
+        <ProcessTabBar
+          tabs={allTabs}
+          activeTabId={activeTabId}
+          gitBranches={gitBranches}
+          onSelectTab={onSelectTab}
+          onCloseTab={onCloseTab}
+        />
+      )}
     </div>
   );
 }

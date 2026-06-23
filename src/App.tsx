@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import {
-  Plus, Terminal, 
-  Trash2, X, ChevronRight, Loader2
+  Plus, Terminal,
+  Trash2, ChevronRight, Loader2
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
@@ -12,6 +12,7 @@ import { ConsoleTab } from './components/ConsoleTab';
 import { Sidebar } from './components/Sidebar';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmModal } from './components/ConfirmModal';
+import { Title } from './components/Title';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -67,6 +68,10 @@ function AppContent() {
   const [confirmDelete, setConfirmDelete] = useState<{ configIndex: number; configName: string } | null>(null);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
+  const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
+    const stored = localStorage.getItem('tab_position');
+    return stored === 'top' || stored === 'bottom' ? stored : 'bottom';
+  });
 
   const unlistenRef = useRef<UnlistenFn[]>([]);
   const restoringRef = useRef(false);
@@ -107,6 +112,11 @@ function AppContent() {
       saveSelectedProjectIdToStorage(selectedProject.id);
     }
   }, [selectedProject]);
+
+  // Save tabPosition to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('tab_position', tabPosition);
+  }, [tabPosition]);
 
   // Ref to track selected project in callbacks without re-triggering effects
   const selectedProjectRef = useRef<Project | null>(null);
@@ -436,52 +446,11 @@ const handleClearLogs = (processId: string) => {
   return (
     <div className="h-screen flex flex-col" style={{ backgroundColor: '#0d0d14', color: '#e2e4f0', fontFamily: "'Inter', sans-serif" }}>
 
-      {/* ─── Navbar ──────────────────────────────────────────────────────── */}
-      <div className="h-13 min-h-[52px] px-5 flex items-center justify-between gap-4" style={{ backgroundColor: '#10101c', borderBottom: '1px solid #1e1e38' }}>
-        {/* Console Tabs in navbar */}
-        <div className="flex items-center gap-1 flex-1 overflow-x-auto min-w-0">
-          {processTabs.map(tab => {
-            const isActive = tab.process_id === activeTabId;
-            const statusColor = tab.status === 'running' ? '#4ade80' : tab.status === 'error' ? '#f87171' : '#555878';
-            return (
-              <button
-                key={tab.process_id}
-                onClick={() => setActiveTabId(tab.process_id)}
-                className="flex items-center gap-1.5 px-3 py-1 rounded text-xs flex-shrink-0 transition-all"
-                style={{
-                  backgroundColor: isActive ? '#1f1f35' : 'transparent',
-                  border: isActive ? '1px solid #3a4199' : '1px solid transparent',
-                  color: isActive ? '#e2e4f0' : '#555878',
-                }}
-              >
-                <span style={{ color: statusColor, fontSize: '8px' }}>●</span>
-                <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
-                <span style={{ color: '#4a4a70' }}>·</span>
-                <span className="text-[10px] truncate max-w-[80px]">{tab.config_name}</span>
-                {tab.config_group && (
-                  <span className="text-[9px] px-1 py-0.5 rounded" style={{ backgroundColor: '#1e1e38', color: '#555878' }}>
-                    {tab.config_group}
-                  </span>
-                )}
-                <span style={{ color: '#4a4a70' }}>·</span>
-                {(gitBranches[tab.project_id] ?? tab.git_branch) && (
-                  <span className="flex items-center gap-0.5" style={{ color: '#a78bfa', fontSize: '10px' }}>
-                    ⎇ {gitBranches[tab.project_id] ?? tab.git_branch}
-                  </span>
-                )}
-                <span
-                  className="ml-1 rounded p-0.5 hover:text-white transition-colors"
-                  onClick={e => { e.stopPropagation(); handleCloseTab(tab.process_id); }}
-                  style={{ color: '#3a3a60' }}
-                >
-                  <X size={10} />
-                </span>
-              </button>
-            );
-          })}
-        </div>
-
-      </div>
+      {/* ─── Title ──────────────────────────────────────────────────────────── */}
+      <Title
+        tabPosition={tabPosition}
+        onToggleTabPosition={() => setTabPosition(prev => prev === 'top' ? 'bottom' : 'top')}
+      />
 
       {/* ─── Main Layout ─────────────────────────────────────────────────── */}
 <div className="flex-1 flex overflow-hidden">
@@ -520,6 +489,12 @@ const handleClearLogs = (processId: string) => {
               onClose={handleCloseTab}
               onRerun={handleRerun}
               onClear={handleClearLogs}
+              tabPosition={tabPosition}
+              allTabs={processTabs}
+              activeTabId={activeTabId}
+              onSelectTab={setActiveTabId}
+              onCloseTab={handleCloseTab}
+              gitBranches={gitBranches}
             />
           ) : (
             <div className="flex-1 flex items-center justify-center flex-col gap-4" style={{ color: '#3d3f60' }}>
@@ -580,7 +555,16 @@ const handleClearLogs = (processId: string) => {
           <span>🖥️ {processTabs.length} procesos activos</span>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setTabPosition(prev => prev === 'top' ? 'bottom' : 'top')}
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors text-[10px] font-mono"
+            style={{ color: '#555878' }}
+            title={tabPosition === 'top' ? 'Mover tabs abajo' : 'Mover tabs arriba'}
+          >
+            {tabPosition === 'top' ? '▼ Tabs' : '▲ Tabs'}
+          </button>
+
           <button
             onClick={handleAddProject}
             disabled={isLoading}
