@@ -13,6 +13,8 @@ import { Sidebar } from './components/Sidebar';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmModal } from './components/ConfirmModal';
 import { Title } from './components/Title';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { QuickSwitchModal } from './components/QuickSwitchModal';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -67,6 +69,7 @@ function AppContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ configIndex: number; configName: string } | null>(null);
   const [showFooterMenu, setShowFooterMenu] = useState(false);
+  const [showQuickSwitch, setShowQuickSwitch] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -360,6 +363,16 @@ const handleClearLogs = (processId: string) => {
     });
   };
 
+  const handleCloseAllTabs = async () => {
+    for (const tab of processTabs) {
+      if (tab.status === 'running') {
+        try { await stopProcess(tab.process_id); } catch {}
+      }
+    }
+    setProcessTabs([]);
+    setActiveTabId(null);
+  };
+
   // ─── Custom commands ──────────────────────────────────────────────────────
   const handleSaveCommand = async (projectId: string, config: ProjectConfig, editIndex?: number) => {
     let updatedProject: Project;
@@ -443,6 +456,40 @@ const handleClearLogs = (processId: string) => {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const activeTab = processTabs.find(t => t.process_id === activeTabId) ?? null;
+
+  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu;
+
+  useKeyboardShortcuts([
+    {
+      key: 'p', ctrl: true,
+      handler: () => setShowQuickSwitch(true),
+    },
+    {
+      key: 'w', ctrl: true,
+      handler: () => { if (!isModalOpen && activeTabId) handleCloseTab(activeTabId); },
+    },
+    {
+      key: 'w', ctrl: true, shift: true,
+      handler: () => { if (!isModalOpen) handleCloseAllTabs(); },
+    },
+    {
+      key: 'r', ctrl: true,
+      handler: () => {
+        if (!isModalOpen && activeTab && activeTab.status !== 'running') {
+          handleRerun(activeTab.process_id);
+        }
+      },
+    },
+    {
+      key: 'Escape',
+      handler: () => {
+        if (showQuickSwitch) setShowQuickSwitch(false);
+        else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
+        else if (confirmDelete) setConfirmDelete(null);
+        else if (showFooterMenu) setShowFooterMenu(false);
+      },
+    },
+  ]);
 
   return (
     <div className="h-screen flex flex-col" style={{ backgroundColor: '#0d0d14', color: '#e2e4f0', fontFamily: "'Inter', sans-serif" }}>
@@ -546,6 +593,18 @@ const handleClearLogs = (processId: string) => {
           confirmStyle="danger"
           onConfirm={confirmDeleteConfig}
           onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+
+      {/* Quick Switch Modal (Ctrl+P) */}
+      {showQuickSwitch && (
+        <QuickSwitchModal
+          projects={projects}
+          onSelect={(project) => {
+            setSelectedProject(project);
+            setShowQuickSwitch(false);
+          }}
+          onClose={() => setShowQuickSwitch(false)}
         />
       )}
 
