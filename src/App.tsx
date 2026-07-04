@@ -21,6 +21,7 @@ import { QuickSwitchModal } from './components/QuickSwitchModal';
 import { ShortcutHelpModal } from './components/ShortcutHelpModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ProjectPaletteModal } from './components/ProjectPaletteModal';
+import { FileEditorModal } from './components/FileEditorModal';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 let logIdCounter = 0;
@@ -81,6 +82,7 @@ function AppContent() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showProjectPalette, setShowProjectPalette] = useState(false);
+  const [showFileEditor, setShowFileEditor] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -501,6 +503,9 @@ const handleClearLogs = (processId: string) => {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const activeTab = processTabs.find(t => t.process_id === activeTabId) ?? null;
+  const contextProject = activeTab
+    ? projects.find(p => p.id === activeTab.project_id) ?? selectedProject
+    : selectedProject;
 
   const handleCommandPaletteAction = (action: string) => {
     switch (action) {
@@ -529,29 +534,35 @@ const handleClearLogs = (processId: string) => {
   const handleProjectPaletteAction = (action: string) => {
     switch (action) {
       case 'open-folder':
-        if (selectedProject) {
-          openPath(selectedProject.path).catch(console.error);
+        if (contextProject) {
+          openPath(contextProject.path).catch(console.error);
         }
         break;
       case 'add-command':
+        if (contextProject) {
+          setSelectedProject(contextProject);
+        }
         setEditingConfig(null);
         setShowCustomModal(true);
+        break;
+      case 'open-file-editor':
+        setShowFileEditor(true);
         break;
     }
   };
 
   const handleProjectPaletteSelect = async (configIndex: number) => {
-    if (!selectedProject) return;
-    const config = selectedProject.configurations[configIndex];
+    if (!contextProject) return;
+    const config = contextProject.configurations[configIndex];
     if (!config) return;
     try {
       const [info, branch] = await Promise.all([
-        spawnProjectCommand(selectedProject.id, configIndex),
-        getGitBranch(selectedProject.path),
+        spawnProjectCommand(contextProject.id, configIndex),
+        getGitBranch(contextProject.path),
       ]);
       const newTab: ProcessTab = {
         process_id: info.id,
-        project_id: selectedProject.id,
+        project_id: contextProject.id,
         project_name: info.project_name,
         config_name: info.config_name,
         config_index: configIndex,
@@ -560,7 +571,7 @@ const handleClearLogs = (processId: string) => {
         logs: [],
         started_at: info.started_at,
         git_branch: branch,
-        project_type: selectedProject.project_type,
+        project_type: contextProject.project_type,
       };
       setProcessTabs(prev => [...prev, newTab]);
       setActiveTabId(info.id);
@@ -598,7 +609,7 @@ const handleClearLogs = (processId: string) => {
     }
   };
 
-  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette;
+  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette || showFileEditor;
 
   useKeyboardShortcuts([
     {
@@ -619,7 +630,11 @@ const handleClearLogs = (processId: string) => {
     },
     {
       key: 'o', ctrl: true, shift: true, label: 'Project commands', category: 'Global',
-      handler: () => { if (!isModalOpen && selectedProject) setShowProjectPalette(true); },
+      handler: () => { if (!isModalOpen && contextProject) setShowProjectPalette(true); },
+    },
+    {
+      key: 'e', ctrl: true, shift: true, label: 'Open file editor', category: 'Global',
+      handler: () => { if (!isModalOpen && contextProject) setShowFileEditor(true); },
     },
     {
       key: 'w', ctrl: true, label: 'Close active tab', category: 'Global',
@@ -644,6 +659,7 @@ const handleClearLogs = (processId: string) => {
         else if (showShortcutHelp) setShowShortcutHelp(false);
         else if (showQuickSwitch) setShowQuickSwitch(false);
         else if (showProjectPalette) setShowProjectPalette(false);
+        else if (showFileEditor) setShowFileEditor(false);
         else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
         else if (confirmDelete) setConfirmDelete(null);
         else if (showFooterMenu) setShowFooterMenu(false);
@@ -790,12 +806,20 @@ const handleClearLogs = (processId: string) => {
       )}
 
       {/* Project Palette Modal (Ctrl+Shift+O) */}
-      {showProjectPalette && selectedProject && (
+      {showProjectPalette && contextProject && (
         <ProjectPaletteModal
-          project={selectedProject}
+          project={contextProject}
           onSelectCommand={handleProjectPaletteSelect}
           onAction={handleProjectPaletteAction}
           onClose={() => setShowProjectPalette(false)}
+        />
+      )}
+
+      {/* File Editor Modal (Ctrl+Shift+E) */}
+      {showFileEditor && contextProject && (
+        <FileEditorModal
+          projectPath={contextProject.path}
+          onClose={() => setShowFileEditor(false)}
         />
       )}
 

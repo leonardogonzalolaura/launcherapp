@@ -63,6 +63,14 @@ export function ProjectPaletteModal({
       icon: '➕',
     });
 
+    items.push({
+      type: 'action',
+      label: 'Open file editor',
+      sublabel: 'Browse and edit project files',
+      action: 'open-file-editor',
+      icon: '📝',
+    });
+
     return items;
   }, [project]);
 
