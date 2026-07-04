@@ -14,7 +14,35 @@ interface CodeEditorProps {
 }
 
 function getExtensions(language: string, onSave: () => void, onChange: (c: string) => void) {
-  const ext: any[] = [basicSetup];
+  const ext: any[] = [
+    basicSetup,
+    EditorView.theme({
+      '&': { backgroundColor: 'transparent', height: '100%' },
+      '.cm-gutters': {
+        backgroundColor: 'var(--bg-base)',
+        borderRight: '1px solid var(--border-color)',
+        color: 'var(--text-muted)',
+      },
+      '.cm-activeLineGutter': {
+        backgroundColor: 'var(--bg-hover)',
+      },
+      '.cm-activeLine': {
+        backgroundColor: 'transparent',
+      },
+      '.cm-cursor': {
+        borderLeftColor: 'var(--text-primary)',
+      },
+      '.cm-content': {
+        caretColor: 'var(--text-primary)',
+      },
+      '.cm-selectionBackground': {
+        backgroundColor: 'var(--bg-selected) !important',
+      },
+      '.cm-selectionMatch': {
+        backgroundColor: 'var(--bg-hover) !important',
+      },
+    }),
+  ];
 
   switch (language) {
     case 'python': ext.push(python()); break;

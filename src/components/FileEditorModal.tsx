@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
@@ -15,6 +15,8 @@ interface OpenFile {
 
 interface FileEditorModalProps {
   projectPath: string;
+  projectName?: string;
+  gitBranch?: string | null;
   onClose: () => void;
 }
 
@@ -34,10 +36,11 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
-export function FileEditorModal({ projectPath, onClose }: FileEditorModalProps) {
+export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }: FileEditorModalProps) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [confirmClose, setConfirmClose] = useState<boolean>(false);
+  const [explorerCollapsed, setExplorerCollapsed] = useState<boolean>(false);
   const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
   const openFilesRef = useRef(openFiles);
   const activeIndexRef = useRef(activeIndex);
@@ -165,7 +168,27 @@ export function FileEditorModal({ projectPath, onClose }: FileEditorModalProps) 
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-color)' }}>
-          <span className="text-xs font-medium text-muted">📁 File Editor</span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setExplorerCollapsed(prev => !prev)}
+              className="p-0.5 rounded hover:bg-hover transition-colors text-muted"
+              title={explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
+            >
+              {explorerCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
+            </button>
+            <span className="text-xs font-medium text-muted">📁 File Editor</span>
+            {projectName && (
+              <>
+                <span className="text-[10px]" style={{ color: '#555878' }}>·</span>
+                <span className="text-[11px] font-medium text-secondary">{projectName}</span>
+                {gitBranch && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                    {gitBranch}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
           <div className="flex items-center gap-2">
             {activeFile && activeFile.content !== activeFile.savedContent && (
               <>
@@ -202,8 +225,14 @@ export function FileEditorModal({ projectPath, onClose }: FileEditorModalProps) 
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* File Explorer */}
-          <div className="flex-shrink-0 overflow-hidden" style={{ width: '220px', borderRight: '1px solid var(--border-color)' }}>
-            <FileExplorer rootPath={projectPath} onOpenFile={openFile} />
+          <div
+            className="flex-shrink-0 overflow-hidden transition-all duration-200"
+            style={{
+              width: explorerCollapsed ? '0px' : '220px',
+              borderRight: explorerCollapsed ? 'none' : '1px solid var(--border-color)',
+            }}
+          >
+            {!explorerCollapsed && <FileExplorer rootPath={projectPath} onOpenFile={openFile} />}
           </div>
 
           {/* Editor */}

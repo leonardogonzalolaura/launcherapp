@@ -819,6 +819,8 @@ const handleClearLogs = (processId: string) => {
       {showFileEditor && contextProject && (
         <FileEditorModal
           projectPath={contextProject.path}
+          projectName={contextProject.name}
+          gitBranch={gitBranches[contextProject.id]}
           onClose={() => setShowFileEditor(false)}
         />
       )}

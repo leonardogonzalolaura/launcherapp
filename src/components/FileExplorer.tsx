@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, Search } from 'lucide-react';
 import { readDir } from '@tauri-apps/plugin-fs';
 
@@ -42,7 +42,7 @@ async function loadDir(path: string): Promise<TreeNode[]> {
     const nodes: TreeNode[] = [];
     for (const entry of entries) {
       if (!entry.name || EXCLUDED_DIRS.has(entry.name)) continue;
-      if (entry.name.startsWith('.')) continue;
+      if (entry.name.startsWith('.') && entry.isFile === false) continue;
       nodes.push({
         name: entry.name,
         path: `${path}/${entry.name}`,
@@ -66,6 +66,9 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const treeRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -74,6 +77,42 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
       setLoading(false);
     });
   }, [rootPath]);
+
+  useEffect(() => {
+    treeRef.current?.focus();
+  }, []);
+
+  const matchesSearch = useCallback((name: string): boolean => {
+    if (!search.trim()) return true;
+    return name.toLowerCase().includes(search.toLowerCase());
+  }, [search]);
+
+  const flatNodes = useMemo(() => {
+    const result: TreeNode[] = [];
+    const walk = (nodes: TreeNode[]) => {
+      for (const node of nodes) {
+        if (!matchesSearch(node.name)) continue;
+        result.push(node);
+        if (!node.isFile && node.expanded) {
+          walk(node.children);
+        }
+      }
+    };
+    walk(rootNodes);
+    return result;
+  }, [rootNodes, matchesSearch]);
+
+  const focusNode = useCallback((path: string | null) => {
+    if (!path) return;
+    setFocusedPath(path);
+    requestAnimationFrame(() => {
+      const el = treeRef.current?.querySelector(`[data-path="${CSS.escape(path)}"]`) as HTMLElement | null;
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ block: 'nearest' });
+      }
+    });
+  }, []);
 
   const toggleExpand = useCallback(async (nodePath: string) => {
     setRootNodes(prev => {
@@ -97,10 +136,44 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     });
   }, []);
 
-  const matchesSearch = (name: string): boolean => {
-    if (!search.trim()) return true;
-    return name.toLowerCase().includes(search.toLowerCase());
-  };
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (flatNodes.length === 0) return;
+
+    const currentIndex = focusedPath ? flatNodes.findIndex(n => n.path === focusedPath) : -1;
+    let nextIndex = currentIndex;
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        nextIndex = currentIndex < 0 ? 0 : Math.min(currentIndex + 1, flatNodes.length - 1);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        nextIndex = currentIndex <= 0 ? flatNodes.length - 1 : currentIndex - 1;
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (currentIndex >= 0) {
+          const node = flatNodes[currentIndex];
+          if (node.isFile) {
+            onOpenFile(node.path);
+          } else {
+            toggleExpand(node.path);
+          }
+        }
+        return;
+      default:
+        return;
+    }
+
+    if (nextIndex >= 0 && nextIndex < flatNodes.length) {
+      focusNode(flatNodes[nextIndex].path);
+    }
+  }, [flatNodes, focusedPath, onOpenFile, toggleExpand, focusNode]);
+
+  const handleNodeClick = useCallback((path: string) => {
+    setFocusedPath(path);
+  }, []);
 
   const renderNode = (node: TreeNode, depth: number): React.ReactNode | null => {
     if (!matchesSearch(node.name)) return null;
@@ -109,7 +182,11 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
       return (
         <button
           key={node.path}
-          onClick={() => onOpenFile(node.path)}
+          data-path={node.path}
+          onClick={() => {
+            handleNodeClick(node.path);
+            onOpenFile(node.path);
+          }}
           className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs rounded transition-colors hover:bg-hover"
           style={{ paddingLeft: `${12 + depth * 16}px`, color: 'var(--text-secondary)' }}
           title={node.path}
@@ -123,7 +200,11 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     return (
       <div key={node.path}>
         <button
-          onClick={() => toggleExpand(node.path)}
+          data-path={node.path}
+          onClick={() => {
+            handleNodeClick(node.path);
+            toggleExpand(node.path);
+          }}
           className="w-full flex items-center gap-1 px-2 py-1 text-left text-xs rounded transition-colors hover:bg-hover"
           style={{ paddingLeft: `${8 + depth * 16}px`, color: 'var(--text-secondary)' }}
           title={node.path}
@@ -158,15 +239,29 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
         <div className="flex items-center gap-1.5 rounded px-2 py-1" style={{ backgroundColor: 'var(--bg-elevated)' }}>
           <Search size={11} className="text-muted flex-shrink-0" />
           <input
+            ref={searchRef}
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (flatNodes.length > 0) {
+                  focusNode(flatNodes[0].path);
+                }
+              }
+            }}
             placeholder="Buscar archivos..."
             className="bg-transparent text-xs outline-none w-full text-primary"
           />
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto">
+      <div
+        ref={treeRef}
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        className="flex-1 overflow-y-auto outline-none"
+      >
         {loading ? (
           <div className="text-xs text-center py-8 text-muted">Loading...</div>
         ) : (
