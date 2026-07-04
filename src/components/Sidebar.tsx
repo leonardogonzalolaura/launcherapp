@@ -43,12 +43,11 @@ function CollapsibleGroup({ group, configs, onExecuteCommand, onEditCommand, onD
     <div className="mb-2">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center gap-1.5 px-1 py-1 rounded text-xs font-semibold uppercase hover:bg-[#1a1a2e] transition-colors"
-        style={{ color: '#555878' }}
+        className="w-full flex items-center gap-1.5 px-1 py-1 rounded text-xs font-semibold uppercase hover:bg-hover transition-colors text-muted"
       >
         <Folder size={11} />
         <span className="flex-1 text-left truncate">{group}</span>
-        <span className="text-[10px]" style={{ color: '#3d3f60' }}>({configs.length})</span>
+        <span className="text-[10px] text-muted">({configs.length})</span>
         {collapsed ? <ChevronRight size={11} /> : <ChevronDown size={11} />}
       </button>
       {!collapsed && (
@@ -85,7 +84,7 @@ export function Sidebar({
   onOpenCustomModal,
 }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(true);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
 
   const filteredProjects = projects.filter(p =>
@@ -116,25 +115,23 @@ export function Sidebar({
   if (!selectedProject) {
     return (
       <div
-        className={`flex-shrink-0 flex flex-col transition-all duration-300 ${isCollapsed ? 'w-12' : 'w-72'}`}
-        style={{ backgroundColor: '#10101c', borderRight: '1px solid #1e1e38' }}
+        className={`flex-shrink-0 flex flex-col transition-all duration-300 bg-base ${isCollapsed ? 'w-12' : 'w-72'}`}
+        style={{ borderRight: '1px solid var(--border-color)' }}
       >
         <button
           onClick={() => setIsCollapsed(!isCollapsed)}
-          className="absolute right-2 top-2 p-1 rounded hover:bg-[#1f1f35] transition-colors z-10"
-          style={{ color: '#555878' }}
+          className="absolute right-2 top-2 p-1 rounded hover:bg-hover transition-colors z-10 text-muted"
         >
           {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
 
         {!isCollapsed && (
-          <div className="flex-1 flex items-center justify-center flex-col gap-3 p-8 text-center" style={{ color: '#3d3f60' }}>
+          <div className="flex-1 flex items-center justify-center flex-col gap-3 p-8 text-center text-muted">
             <FolderOpen size={36} className="opacity-40" />
             <p className="text-sm">No project selected</p>
             <button
               onClick={onAddProject}
-              className="flex items-center gap-2 px-3 py-1.5 rounded text-xs mt-2"
-              style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded text-xs mt-2 bg-elevated border-light"
             >
               <Plus size={12} /> Add Project
             </button>
@@ -146,18 +143,16 @@ export function Sidebar({
 
   return (
     <div
-      className={`flex-shrink-0 flex flex-col transition-all duration-300 relative ${isCollapsed ? 'w-12' : 'w-72'}`}
+      className={`flex-shrink-0 flex flex-col transition-all duration-300 relative bg-base ${isCollapsed ? 'w-12' : 'w-72'}`}
       style={{
-        backgroundColor: '#10101c',
-        borderRight: '1px solid #1e1e38',
+        borderRight: '1px solid var(--border-color)',
         width: isCollapsed ? '3rem' : '18rem',
         overflow: 'hidden'
       }}
     >
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="absolute right-2 top-2 p-1 rounded hover:bg-[#1f1f35] transition-colors z-10"
-        style={{ color: '#555878' }}
+        className="absolute right-2 top-2 p-1 rounded hover:bg-hover transition-colors z-10 text-muted"
       >
         {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
       </button>
@@ -165,14 +160,13 @@ export function Sidebar({
       {!isCollapsed ? (
         <div className="flex-1 overflow-y-auto">
           {/* Project Info */}
-          <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
-            <div className="text-xs font-semibold uppercase mb-2" style={{ color: '#3d3f60' }}>Project</div>
+          <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
+            <div className="text-xs font-semibold uppercase mb-2 text-muted">Project</div>
 
             <div className="relative mb-2">
               <button
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden group relative"
-                style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50' }}
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-sm overflow-hidden group relative bg-elevated border-light"
                 title={selectedProject.name}
               >
                 <span className="flex-shrink-0">{getProjectIcon(selectedProject.project_type)}</span>
@@ -181,24 +175,24 @@ export function Sidebar({
                     {selectedProject.name}
                   </div>
                 </div>
-                <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: '#252540', color: '#6e7fff' }}>
+                <span className="text-xs px-1.5 py-0.5 rounded flex-shrink-0" style={{ backgroundColor: 'var(--border-color)', color: '#6e7fff' }}>
                   {selectedProject.project_type}
                 </span>
-                <ChevronDown size={14} style={{ color: '#555878', flexShrink: 0 }} className={`transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                <ChevronDown size={14} className={`text-muted flex-shrink-0 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isDropdownOpen && (
-                <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
-                  <div className="p-2" style={{ borderBottom: '1px solid #252540' }}>
+                <div className="absolute top-full left-0 mt-1 w-full rounded-md shadow-xl z-20 overflow-hidden bg-surface border-standard">
+                  <div className="p-2" style={{ borderBottom: '1px solid var(--border-color)' }}>
                     <div className="relative">
-                      <Search size={12} className="absolute left-2 top-1/2 transform -translate-y-1/2" style={{ color: '#555878' }} />
+                      <Search size={12} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-muted" />
                       <input
                         type="text"
                         placeholder="Search projects..."
                         value={projectSearchTerm}
                         onChange={(e) => setProjectSearchTerm(e.target.value)}
-                        className="w-full pl-7 pr-6 py-1.5 text-xs rounded"
-                        style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0', outline: 'none' }}
+                        className="w-full pl-7 pr-6 py-1.5 text-xs rounded bg-elevated border-light text-primary"
+                        style={{ outline: 'none' }}
                         onClick={(e) => e.stopPropagation()}
                       />
                       {projectSearchTerm && (
@@ -207,8 +201,7 @@ export function Sidebar({
                             e.stopPropagation();
                             setProjectSearchTerm('');
                           }}
-                          className="absolute right-2 top-1/2 transform -translate-y-1/2"
-                          style={{ color: '#555878' }}
+                          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-muted"
                         >
                           <X size={10} />
                         </button>
@@ -222,12 +215,12 @@ export function Sidebar({
                         <div key={p.id} className="w-full flex items-center justify-between group">
                           <button
                             onClick={() => { onSelectProject(p); setIsDropdownOpen(false); setProjectSearchTerm(''); }}
-                            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-[#1f1f35] overflow-hidden"
+                            className="flex-1 flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-hover overflow-hidden"
                             title={p.name}
                           >
                             <span className="flex-shrink-0">{getProjectIcon(p.project_type)}</span>
                             <span className="flex-1 truncate">{p.name}</span>
-                            <span className="text-xs mr-1 flex-shrink-0" style={{ color: '#555878' }}>{p.project_type}</span>
+                            <span className="text-xs mr-1 flex-shrink-0 text-muted">{p.project_type}</span>
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); onRemoveProject(p.id); }}
@@ -238,7 +231,7 @@ export function Sidebar({
                         </div>
                       ))
                     ) : (
-                      <div className="text-center py-4 text-xs" style={{ color: '#555878' }}>
+                      <div className="text-center py-4 text-xs text-muted">
                         No projects found
                       </div>
                     )}
@@ -261,7 +254,7 @@ export function Sidebar({
           </div>
 
           {/* Grouped command sections */}
-          <div className="p-4" style={{ borderBottom: '1px solid #1e1e38' }}>
+          <div className="p-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
             {Array.from(groupedConfigs.entries()).map(([group, configs]) => (
               <CollapsibleGroup
                 key={group}
@@ -277,7 +270,7 @@ export function Sidebar({
             {/* Ungrouped Run commands */}
             {ungroupedConfigs.filter(c => isRunCmd(c.config.name)).length > 0 && (
               <>
-                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
+                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5 text-muted">
                   <Play size={11} /> Run
                 </div>
                 <div className="space-y-1.5 mb-3">
@@ -302,7 +295,7 @@ export function Sidebar({
             {/* Ungrouped Build commands */}
             {ungroupedConfigs.filter(c => isBuildCmd(c.config.name)).length > 0 && (
               <>
-                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
+                <div className="text-xs font-semibold uppercase mb-2 flex items-center gap-1.5 text-muted">
                   <Hammer size={11} /> Build
                 </div>
                 <div className="space-y-1.5 mb-3">
@@ -328,7 +321,7 @@ export function Sidebar({
           {/* Ungrouped Custom Commands + Add button */}
           <div className="p-4 flex-1">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-xs font-semibold uppercase flex items-center gap-1.5" style={{ color: '#3d3f60' }}>
+              <div className="text-xs font-semibold uppercase flex items-center gap-1.5 text-muted">
                 <Settings size={11} /> Custom
               </div>
               <button
@@ -355,9 +348,9 @@ export function Sidebar({
                   />
                 ))}
               {ungroupedConfigs.filter(c => !isRunCmd(c.config.name) && !isBuildCmd(c.config.name)).length === 0 && (
-                <div className="text-xs text-center py-4" style={{ color: '#3d3f60' }}>
-                  No custom commands yet
-                </div>
+              <div className="text-xs text-center py-4 text-muted">
+                No custom commands yet
+              </div>
               )}
             </div>
           </div>
@@ -367,37 +360,34 @@ export function Sidebar({
         <div className="flex flex-col items-center py-4 gap-3" style={{ overflow: 'visible' }}>
           <button
             onClick={onAddProject}
-            className="mt-6 p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
+            className="mt-6 p-2 rounded hover:bg-hover transition-colors relative group"
             title="Add project"
           >
             <Plus size={18} />
-            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light text-primary">
               Add project
             </span>
           </button>
 
           <button
             onClick={() => onOpenCustomModal(null)}
-            className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
+            className="p-2 rounded hover:bg-hover transition-colors relative group"
             title="Add custom command"
           >
             <PlusCircle size={18} style={{ color: '#6e7fff' }} />
-            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#6e7fff' }}>
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light" style={{ color: '#6e7fff' }}>
               Add command
             </span>
           </button>
 
-          <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
+          <div className="w-6 h-px border-light" style={{ backgroundColor: 'var(--border-light)' }} />
 
           <div
             className="text-2xl relative group cursor-help"
             title={selectedProject.name}
           >
             {getProjectIcon(selectedProject.project_type)}
-            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                  style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+            <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light text-primary">
               {selectedProject.name}
             </span>
           </div>
@@ -409,28 +399,26 @@ export function Sidebar({
               title={gitBranches[selectedProject.id] || ''}
             >
               🍃
-              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#c084fc' }}>
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light" style={{ color: '#c084fc' }}>
                 {gitBranches[selectedProject.id]}
               </span>
             </div>
           )}
 
-          <div className="w-6 h-px" style={{ backgroundColor: '#2e2e50' }} />
+          <div className="w-6 h-px border-light" style={{ backgroundColor: 'var(--border-light)' }} />
 
           {selectedProject.configurations.slice(0, 4).map((c, i) => (
             <button
               key={i}
               onClick={() => onExecuteCommand(i)}
-              className="p-2 rounded hover:bg-[#1f1f35] transition-colors relative group"
+              className="p-2 rounded hover:bg-hover transition-colors relative group"
               title={c.name}
             >
               {isRunCmd(c.name) ? <Play size={16} style={{ color: '#4ade80' }} /> :
                isBuildCmd(c.name) ? <Hammer size={16} style={{ color: '#fbbf24' }} /> :
                <Settings size={16} style={{ color: '#6e7fff' }} />}
 
-              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light text-primary">
                 {c.name}
               </span>
             </button>
@@ -438,13 +426,11 @@ export function Sidebar({
 
           {selectedProject.configurations.length > 4 && (
             <div
-              className="text-[10px] px-1 py-0.5 rounded mt-1 cursor-help relative group"
-              style={{ backgroundColor: '#1a1a2e', color: '#555878' }}
+              className="text-[10px] px-1 py-0.5 rounded mt-1 cursor-help relative group bg-elevated text-muted"
               title={`${selectedProject.configurations.length - 4} more commands`}
             >
               +{selectedProject.configurations.length - 4}
-              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50"
-                    style={{ backgroundColor: '#1a1a2e', border: '1px solid #2e2e50', color: '#e2e4f0' }}>
+              <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light text-primary">
                 {selectedProject.configurations.length - 4} more commands available
               </span>
             </div>

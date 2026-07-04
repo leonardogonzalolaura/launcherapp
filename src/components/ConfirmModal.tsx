@@ -30,11 +30,10 @@ export function ConfirmModal({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl overflow-hidden shadow-2xl"
-        style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50' }}
+        className="w-full max-w-sm rounded-xl overflow-hidden shadow-2xl bg-surface border-light"
         onClick={e => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid #252540' }}>
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <div className="flex items-center gap-3">
             <AlertTriangle size={18} style={{ color: '#f87171' }} />
             <span className="font-semibold">{title}</span>
@@ -51,15 +50,14 @@ export function ConfirmModal({
         </div>
 
         <div className="px-5 py-4">
-          <p className="text-sm" style={{ color: '#8890b0' }}>{message}</p>
+          <p className="text-sm text-secondary">{message}</p>
         </div>
 
-        <div className="flex justify-end gap-3 px-5 py-4" style={{ borderTop: '1px solid #252540' }}>
+        <div className="flex justify-end gap-3 px-5 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
           <button
             onClick={onCancel}
-            className="px-4 py-2 rounded-md text-sm transition-colors"
-            style={{ color: '#555878', border: '1px solid #2e2e50' }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; }}
+            className="px-4 py-2 rounded-md text-sm transition-colors text-muted border-light"
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
             onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'transparent'; }}
           >
             {cancelLabel}

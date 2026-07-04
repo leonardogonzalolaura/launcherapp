@@ -67,20 +67,18 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl"
-        style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50' }}
+        className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl bg-surface border-light"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid #252540' }}>
+        <div className="flex items-center justify-between px-6 py-4" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <div className="flex items-center gap-3">
             <Settings size={18} style={{ color: '#6e7fff' }} />
             <span className="font-semibold">{editingConfig ? 'Edit Command' : 'New Custom Command'}</span>
           </div>
-          <button onClick={onClose} className="rounded-md p-1 transition-colors"
-            style={{ color: '#555878' }}
-            onMouseEnter={e => (e.currentTarget.style.color = '#e2e4f0')}
-            onMouseLeave={e => (e.currentTarget.style.color = '#555878')}>
+          <button onClick={onClose} className="rounded-md p-1 transition-colors text-muted"
+            onMouseEnter={e => (e.currentTarget.style.color = 'var(--text-primary)')}
+            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-muted)')}>
             <X size={16} />
           </button>
         </div>
@@ -88,22 +86,21 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
         {/* Body */}
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+            <label className="block text-xs font-semibold uppercase mb-1.5 text-muted">
               Name *
             </label>
             <input
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. run-sentinel"
-              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors"
-              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors bg-base border-light text-primary"
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
-              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-light)')}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+            <label className="block text-xs font-semibold uppercase mb-1.5 text-muted">
               Command *
             </label>
             <textarea
@@ -111,51 +108,48 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
               onChange={e => setCommand(e.target.value)}
               placeholder={`e.g. $env:ENV='dev'; $env:PYTHONPATH='.'; .venv\\Scripts\\activate; python main.py run-sentinel`}
               rows={3}
-              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none resize-none transition-colors"
-              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none resize-none transition-colors bg-base border-light text-primary"
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
-              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-light)')}
             />
-            <p className="text-xs mt-1" style={{ color: '#555878' }}>
+            <p className="text-xs mt-1 text-muted">
               PowerShell syntax. Use <code style={{ color: '#6e7fff' }}>$env:VAR='value'</code> for env vars inline.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+            <label className="block text-xs font-semibold uppercase mb-1.5 text-muted">
               Working Directory (leave blank to use project root)
             </label>
             <input
               value={workingDir}
               onChange={e => setWorkingDir(e.target.value)}
               placeholder="e.g. C:\projects\myapp"
-              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors"
-              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors bg-base border-light text-primary"
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
-              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-light)')}
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+            <label className="block text-xs font-semibold uppercase mb-1.5 text-muted">
               Carpeta / Grupo (opcional)
             </label>
             <input
               value={group}
               onChange={e => setGroup(e.target.value)}
               placeholder="e.g. Backend, Frontend, Utils"
-              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors"
-              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none transition-colors bg-base border-light text-primary"
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
-              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-light)')}
             />
-            <p className="text-xs mt-1" style={{ color: '#555878' }}>
+            <p className="text-xs mt-1 text-muted">
               Los comandos con la misma carpeta se agruparán en la sidebar.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold uppercase mb-1.5" style={{ color: '#555878' }}>
+            <label className="block text-xs font-semibold uppercase mb-1.5 text-muted">
               Environment Variables (KEY=value, one per line)
             </label>
             <textarea
@@ -163,10 +157,9 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
               onChange={e => setEnvVarsText(e.target.value)}
               placeholder={`ENV=dev\nPYTHONPATH=.\nMY_SECRET=abc123`}
               rows={4}
-              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none resize-none transition-colors"
-              style={{ backgroundColor: '#0d0d14', border: '1px solid #2e2e50', color: '#e2e4f0' }}
+              className="w-full px-3 py-2 rounded-md text-sm font-mono outline-none resize-none transition-colors bg-base border-light text-primary"
               onFocus={e => (e.target.style.borderColor = '#6e7fff')}
-              onBlur={e => (e.target.style.borderColor = '#2e2e50')}
+              onBlur={e => (e.target.style.borderColor = 'var(--border-light)')}
             />
           </div>
 
@@ -179,12 +172,11 @@ export function CustomCommandModal({ projectId, editingConfig, onSave, onClose }
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid #252540' }}>
+        <div className="flex justify-end gap-3 px-6 py-4" style={{ borderTop: '1px solid var(--border-color)' }}>
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-md text-sm transition-colors"
-            style={{ color: '#555878', border: '1px solid #2e2e50' }}
-            onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#1f1f35')}
+            className="px-4 py-2 rounded-md text-sm transition-colors text-muted border-light"
+            onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--bg-hover)')}
             onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
           >
             Cancel

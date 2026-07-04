@@ -225,9 +225,9 @@ const classifyLine = (
       return { category: 'error', color: '#f87171' };
     }
     // JSON normal → neutral (sin color especial, el JsonViewer se encarga del formato)
-    return { category: 'neutral', color: '#d4d4d8' };
+    return { category: 'neutral', color: 'var(--text-console)' };
   }
-  
+
   // 1. Verificar éxito primero (transversal)
   if (isSuccessLine(content)) {
     return { category: 'success', color: '#a8ffb0' };
@@ -238,7 +238,7 @@ const classifyLine = (
     if (isRustError(content)) return { category: 'error', color: '#f87171' };
     if (isRustWarning(content)) return { category: 'warning', color: '#fbbf24' };
     if (isRustNote(content)) return { category: 'info', color: '#60a5fa' };
-    if (isRustLocationLine(content)) return { category: 'info', color: '#555878' };
+    if (isRustLocationLine(content)) return { category: 'info', color: 'var(--text-muted)' };
   }
   
   else if (projectType === 'Python') {
@@ -270,7 +270,7 @@ const classifyLine = (
   if (outputType === 'stderr') {
     if (isGenericWarning(content)) return { category: 'warning', color: '#fbbf24' };
     if (isGenericError(content)) return { category: 'error', color: '#f87171' };
-    return { category: 'info', color: '#d4d4d8' };
+    return { category: 'info', color: 'var(--text-console)' };
   }
   
   if (outputType === 'error') {
@@ -282,7 +282,7 @@ const classifyLine = (
   }
   
   // 4. Caso por defecto (stdout normal)
-  return { category: 'neutral', color: '#d4d4d8' };
+  return { category: 'neutral', color: 'var(--text-console)' };
 };
 
 // Versión con window.open para URLs clickeables y JSON viewer
@@ -373,19 +373,57 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+      const ctrl = e.ctrlKey || e.metaKey;
+
+      // Ctrl+F: Toggle search
+      if (ctrl && e.key === 'f') {
         e.preventDefault();
         setShowSearch(prev => !prev);
         if (!showSearch) setSearchQuery('');
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Escape') {
+
+      // Ctrl+Escape: Close search
+      if (ctrl && e.key === 'Escape') {
         setShowSearch(false);
         setSearchQuery('');
+        return;
+      }
+
+      // Ctrl+L or Ctrl+Delete: Clear console
+      if ((ctrl && e.key === 'l') || (ctrl && e.key === 'Delete')) {
+        e.preventDefault();
+        onClear(tab.process_id);
+        return;
+      }
+
+      // Ctrl+Tab / Ctrl+Shift+Tab: Cycle tabs
+      if (ctrl && e.key === 'Tab') {
+        e.preventDefault();
+        const idx = allTabs.findIndex(t => t.process_id === activeTabId);
+        if (e.shiftKey) {
+          const prev = (idx - 1 + allTabs.length) % allTabs.length;
+          onSelectTab(allTabs[prev].process_id);
+        } else {
+          const next = (idx + 1) % allTabs.length;
+          onSelectTab(allTabs[next].process_id);
+        }
+        return;
+      }
+
+      // Ctrl+1..9: Switch to tab by position
+      if (ctrl && /^[1-9]$/.test(e.key)) {
+        e.preventDefault();
+        const tabIndex = parseInt(e.key) - 1;
+        if (tabIndex < allTabs.length) {
+          onSelectTab(allTabs[tabIndex].process_id);
+        }
+        return;
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [showSearch]);
+  }, [showSearch, allTabs, activeTabId, onSelectTab, onClear, tab.process_id]);
 
   // Filtrar logs según selección
   const filteredLogs = tab.logs.filter(line => {
@@ -462,12 +500,12 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
   return (
     <div className="h-full flex flex-col">
       {/* Tab header - simplificado */}
-      <div className="flex items-center justify-between px-4 py-1.5 flex-shrink-0" style={{ backgroundColor: '#13131f', borderBottom: '1px solid #252540' }}>
+      <div className="flex items-center justify-between px-4 py-1.5 flex-shrink-0 bg-surface" style={{ borderBottom: '1px solid var(--border-color)' }}>
         {/* Left side - status + timer + stats */}
         <div className="flex items-center gap-3">
           <span className={tab.status === 'running' ? 'animate-pulse-dot' : ''} style={{ color: statusColor, fontSize: '10px', lineHeight: 1 }}>●</span>
           {tab.status === 'running' && (
-            <span className="font-mono text-[11px]" style={{ color: '#555878' }}>
+            <span className="font-mono text-[11px] text-muted">
               ⏱ {elapsed}
             </span>
           )}
@@ -496,16 +534,15 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
         <div className="flex items-center gap-2">
           {/* Search input */}
           {showSearch && (
-            <div className="flex items-center gap-1" style={{ backgroundColor: '#1a1a2e', border: '1px solid #3a4199', borderRadius: '4px', padding: '2px 6px' }}>
-              <Search size={11} style={{ color: '#555878', flexShrink: 0 }} />
+            <div className="flex items-center gap-1 bg-elevated" style={{ border: '1px solid #3a4199', borderRadius: '4px', padding: '2px 6px' }}>
+              <Search size={11} className="flex-shrink-0 text-muted" />
               <input
                 ref={searchInputRef}
                 type="text"
                 placeholder="Buscar en logs..."
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="bg-transparent text-xs outline-none min-w-[120px]"
-                style={{ color: '#e2e4f0' }}
+                className="bg-transparent text-xs outline-none min-w-[120px] text-primary"
                 onKeyDown={e => {
                   if (e.key === 'Escape') { setShowSearch(false); setSearchQuery(''); }
                 }}
@@ -517,7 +554,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
                   </span>
                   <button
                     onClick={() => setSearchQuery('')}
-                    className="p-0.5 rounded hover:bg-[#1f1f35] transition-colors"
+                    className="p-0.5 rounded hover:bg-hover transition-colors"
                     style={{ color: '#555878' }}
                   >
                     <SearchX size={11} />
@@ -530,7 +567,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           {!showSearch && (
             <button
               onClick={() => setShowSearch(true)}
-              className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
+              className="p-1 rounded transition-colors hover:bg-hover"
               style={{ color: '#555878' }}
               title="Buscar en logs (Ctrl+F)"
             >
@@ -542,7 +579,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           <div className="relative">
             <button
               onClick={() => setShowFilterMenu(!showFilterMenu)}
-              className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
+              className="p-1 rounded transition-colors hover:bg-hover"
               style={{ color: '#555878' }}
               title="Filter logs"
             >
@@ -551,7 +588,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
             {showFilterMenu && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowFilterMenu(false)} />
-                <div className="absolute right-0 mt-1 w-28 rounded-md shadow-xl z-20 overflow-hidden" style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}>
+                <div className="absolute right-0 mt-1 w-28 rounded-md shadow-xl z-20 overflow-hidden bg-surface border-standard">
                   {[
                     { value: 'all', label: '📋 All', color: '#8890b0' },
                     { value: 'error', label: '🔴 Errors', color: '#f87171' },
@@ -561,7 +598,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
                     <button
                       key={filter.value}
                       onClick={() => { setLogFilter(filter.value as any); setShowFilterMenu(false); }}
-                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-[#1f1f35] transition-colors ${logFilter === filter.value ? 'bg-[#1f1f35]' : ''}`}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-hover transition-colors ${logFilter === filter.value ? 'bg-hover' : ''}`}
                       style={{ color: filter.color }}
                     >
                       {filter.label}
@@ -604,7 +641,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           {/* Botón auto-scroll toggle */}
           <button
             onClick={() => setAutoScroll(!autoScroll)}
-            className={`p-1 rounded transition-colors hover:bg-[#1f1f35] ${!autoScroll ? 'opacity-50' : ''}`}
+            className={`p-1 rounded transition-colors hover:bg-hover ${!autoScroll ? 'opacity-50' : ''}`}
             style={{ color: '#555878' }}
             title={autoScroll ? 'Auto-scroll on' : 'Auto-scroll off'}
           >
@@ -619,8 +656,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
               style={{ backgroundColor: 'rgba(100,100,140,.15)', color: '#8890b0', border: '1px solid rgba(100,100,140,.3)' }}
               onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.25)')}
               onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(100,100,140,.15)')}
+              title="Clear (Ctrl+L)"
             >
-              <Trash size={12} /> Clean
+            <Trash size={12} /> Clean
             </button>
           )}
           
@@ -630,8 +668,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
               onClick={() => onStop(tab.process_id)}
               className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
               style={{ backgroundColor: 'rgba(239,68,68,.15)', color: '#f87171', border: '1px solid rgba(239,68,68,.3)' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.25)')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.15)')}
+              onMouseEnter={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.25)'; }}
+              onMouseLeave={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.15)'; }}
+              title="Stop process"
             >
               <Square size={12} /> Stop
             </button>
@@ -643,8 +682,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
               onClick={() => onRerun(tab.process_id)}
               className="flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-all"
               style={{ backgroundColor: 'rgba(74,222,128,.15)', color: '#4ade80', border: '1px solid rgba(74,222,128,.3)' }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.25)')}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.15)')}
+              onMouseEnter={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.25)'; }}
+              onMouseLeave={e => { if(!showApiExplorer) e.currentTarget.style.backgroundColor = 'rgba(74,222,128,.15)'; }}
+              title="Rerun (Ctrl+R)"
             >
               <Play size={12} /> Rerun
             </button>
@@ -653,7 +693,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           {/* Botón cerrar tab */}
           <button
             onClick={() => onClose(tab.process_id)}
-            className="p-1 rounded transition-colors hover:bg-[#1f1f35]"
+            className="p-1 rounded transition-colors hover:bg-hover"
             style={{ color: '#555878' }}
             onMouseEnter={e => (e.currentTarget.style.color = '#e2e4f0')}
             onMouseLeave={e => (e.currentTarget.style.color = '#555878')}
@@ -678,9 +718,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
       <div className="flex-1 flex overflow-hidden">
         {/* Log output */}
         {(!showApiExplorer || !isApiExplorerMaximized) && (
-          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs" style={{ backgroundColor: '#080810' }}>
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-base">
             {searchFilteredLogs.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-center" style={{ color: '#3d3f60' }}>
+              <div className="flex items-center justify-center h-full text-center" style={{ color: 'var(--text-muted)' }}>
                 <div className="flex flex-col items-center gap-2">
                   <Trash size={24} className="opacity-30" />
                   <p className="text-sm">No logs to display</p>

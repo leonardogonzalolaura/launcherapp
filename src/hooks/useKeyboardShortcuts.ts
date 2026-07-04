@@ -1,10 +1,15 @@
 import { useEffect } from 'react';
 
-interface ShortcutDef {
+export interface ShortcutEntry {
   key: string;
   ctrl?: boolean;
   shift?: boolean;
   alt?: boolean;
+  label: string;
+  category: 'Global' | 'Console' | 'Navigation' | 'Modal';
+}
+
+export interface ShortcutDef extends ShortcutEntry {
   handler: (e: KeyboardEvent) => void;
 }
 
@@ -30,4 +35,13 @@ export function useKeyboardShortcuts(shortcuts: ShortcutDef[], deps: React.Depen
     return () => window.removeEventListener('keydown', onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shortcuts, ...deps]);
+}
+
+export function formatShortcut(entry: ShortcutEntry): string {
+  const parts: string[] = [];
+  if (entry.ctrl) parts.push('Ctrl');
+  if (entry.shift) parts.push('Shift');
+  if (entry.alt) parts.push('Alt');
+  parts.push(entry.key === ' ' ? 'Space' : entry.key.toUpperCase());
+  return parts.join(' + ');
 }

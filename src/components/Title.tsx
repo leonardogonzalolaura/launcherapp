@@ -32,16 +32,16 @@ export function Title({ tabPosition, onToggleTabPosition }: TitleProps) {
     <div
       data-tauri-drag-region
       className="flex items-center gap-3 px-4 flex-shrink-0 select-none"
-      style={{ backgroundColor: '#0a0a10', borderBottom: '1px solid #1e1e38', height: '36px' }}
+      style={{ backgroundColor: '#0a0a10', borderBottom: '1px solid var(--border-color)', height: '36px' }}
     >
       <div data-tauri-drag-region className="flex items-center gap-2">
-        <div className="w-6 h-6 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#1a1a2e' }}>
+        <div className="w-6 h-6 rounded-lg flex items-center justify-center bg-elevated">
           <Terminal size={12} style={{ color: '#6e7fff' }} />
         </div>
         <span className="text-sm font-semibold tracking-wide" style={{ color: '#e2e4f0', fontSize: '13px' }}>
           HorseLaunch
         </span>
-        <span className="text-[9px] px-1.5 py-0.5 rounded" style={{ backgroundColor: '#13131f', color: '#555878', border: '1px solid #252540' }}>
+        <span className="text-[9px] px-1.5 py-0.5 rounded bg-surface text-muted border-standard">
           v0.2.1
         </span>
       </div>
@@ -50,8 +50,7 @@ export function Title({ tabPosition, onToggleTabPosition }: TitleProps) {
 
       <button
         onClick={onToggleTabPosition}
-        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all hover:bg-[#1f1f35]"
-        style={{ color: '#555878' }}
+        className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] transition-all hover:bg-hover text-muted"
         title={tabPosition === 'top' ? 'Tabs abajo del console' : 'Tabs arriba del console'}
       >
         {tabPosition === 'top' ? '▼ Tabs' : '▲ Tabs'}
@@ -60,7 +59,7 @@ export function Title({ tabPosition, onToggleTabPosition }: TitleProps) {
       <div className="flex items-center ml-2" style={{ gap: '2px' }}>
         <button
           onClick={handleMinimize}
-          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-[#1f1f35]"
+          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-hover"
           style={{ color: '#8888a8' }}
           title="Minimizar"
         >
@@ -68,7 +67,7 @@ export function Title({ tabPosition, onToggleTabPosition }: TitleProps) {
         </button>
         <button
           onClick={handleToggleMaximize}
-          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-[#1f1f35]"
+          className="w-[34px] h-[30px] flex items-center justify-center rounded-none transition-colors hover:bg-hover"
           style={{ color: '#8888a8' }}
           title={isMaximized ? 'Restaurar' : 'Maximizar'}
         >

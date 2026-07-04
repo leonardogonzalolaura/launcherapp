@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { openPath } from '@tauri-apps/plugin-opener';
+import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification';
 import {
   Plus, Terminal,
-  Trash2, ChevronRight, Loader2, MoreHorizontal
+  Trash2, ChevronRight, Loader2, MoreHorizontal,
+  Folder, Monitor, Sun, Moon, Keyboard
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
@@ -15,6 +18,10 @@ import { ConfirmModal } from './components/ConfirmModal';
 import { Title } from './components/Title';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { QuickSwitchModal } from './components/QuickSwitchModal';
+import { ShortcutHelpModal } from './components/ShortcutHelpModal';
+import { CommandPaletteModal } from './components/CommandPaletteModal';
+import { ProjectPaletteModal } from './components/ProjectPaletteModal';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -59,6 +66,7 @@ const saveSelectedProjectIdToStorage = (projectId: string | null) => {
 
 function AppContent() {
   const { addToast } = useToast();
+  const { toggleTheme, isDark } = useTheme();
   const [projects, setProjects] = useState<Project[]>(() => loadProjectsFromStorage());
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [processTabs, setProcessTabs] = useState<ProcessTab[]>([]);
@@ -70,6 +78,9 @@ function AppContent() {
   const [confirmDelete, setConfirmDelete] = useState<{ configIndex: number; configName: string } | null>(null);
   const [showFooterMenu, setShowFooterMenu] = useState(false);
   const [showQuickSwitch, setShowQuickSwitch] = useState(false);
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showProjectPalette, setShowProjectPalette] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -208,14 +219,34 @@ function AppContent() {
         );
       });
 
-      exitUnsub = await onProcessExit(({ process_id }) => {
-        setProcessTabs(prev =>
-          prev.map(tab =>
-            tab.process_id === process_id
-              ? { ...tab, status: 'stopped' }
-              : tab
-          )
-        );
+      exitUnsub = await onProcessExit(({ process_id, exit_code }) => {
+        setProcessTabs(prev => {
+          const tab = prev.find(t => t.process_id === process_id);
+          if (tab) {
+            const success = exit_code === 0;
+            const title = success ? '✅ Completed' : '❌ Failed';
+            const body = success
+              ? `${tab.project_name} › ${tab.config_name} finished`
+              : `${tab.project_name} › ${tab.config_name} exited with code ${exit_code ?? 'unknown'}`;
+            (async () => {
+              try {
+                let granted = await isPermissionGranted();
+                if (!granted) {
+                  const permission = await requestPermission();
+                  granted = permission === 'granted';
+                }
+                if (granted) {
+                  sendNotification({ title, body });
+                }
+              } catch {}
+            })();
+          }
+          return prev.map(t =>
+            t.process_id === process_id
+              ? { ...t, status: 'stopped' as const }
+              : t
+          );
+        });
       });
 
       unlistenRef.current = [outputUnsub, exitUnsub];
@@ -457,23 +488,135 @@ const handleClearLogs = (processId: string) => {
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const activeTab = processTabs.find(t => t.process_id === activeTabId) ?? null;
 
-  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu;
+  const handleCommandPaletteAction = (action: string) => {
+    switch (action) {
+      case 'toggle-theme':
+        toggleTheme();
+        break;
+      case 'add-project':
+        handleAddProject();
+        break;
+      case 'add-command':
+        setEditingConfig(null);
+        setShowCustomModal(true);
+        break;
+      case 'close-all-tabs':
+        handleCloseAllTabs();
+        break;
+      case 'clear-projects':
+        handleClearAllProjects();
+        break;
+      case 'shortcut-help':
+        setShowShortcutHelp(true);
+        break;
+    }
+  };
+
+  const handleProjectPaletteAction = (action: string) => {
+    switch (action) {
+      case 'open-folder':
+        if (selectedProject) {
+          openPath(selectedProject.path).catch(console.error);
+        }
+        break;
+      case 'add-command':
+        setEditingConfig(null);
+        setShowCustomModal(true);
+        break;
+    }
+  };
+
+  const handleProjectPaletteSelect = async (configIndex: number) => {
+    if (!selectedProject) return;
+    const config = selectedProject.configurations[configIndex];
+    if (!config) return;
+    try {
+      const [info, branch] = await Promise.all([
+        spawnProjectCommand(selectedProject.id, configIndex),
+        getGitBranch(selectedProject.path),
+      ]);
+      const newTab: ProcessTab = {
+        process_id: info.id,
+        project_id: selectedProject.id,
+        project_name: info.project_name,
+        config_name: info.config_name,
+        config_index: configIndex,
+        config_group: config.group,
+        status: 'running',
+        logs: [],
+        started_at: info.started_at,
+        git_branch: branch,
+        project_type: selectedProject.project_type,
+      };
+      setProcessTabs(prev => [...prev, newTab]);
+      setActiveTabId(info.id);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const handleCommandPaletteSelect = async (projectId: string, configIndex: number) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+    const config = project.configurations[configIndex];
+    if (!config) return;
+    setSelectedProject(project);
+    try {
+      const info = await spawnProjectCommand(projectId, configIndex);
+      const branch = await getGitBranch(project.path).catch(() => null);
+      const newTab: ProcessTab = {
+        process_id: info.id,
+        project_id: project.id,
+        project_name: info.project_name,
+        config_name: info.config_name,
+        config_index: configIndex,
+        config_group: config.group,
+        status: 'running',
+        logs: [],
+        started_at: info.started_at,
+        git_branch: branch,
+        project_type: project.project_type,
+      };
+      setProcessTabs(prev => [...prev, newTab]);
+      setActiveTabId(info.id);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette;
 
   useKeyboardShortcuts([
     {
-      key: 'p', ctrl: true,
+      key: 'p', ctrl: true, label: 'Quick switch project', category: 'Global',
       handler: () => setShowQuickSwitch(true),
     },
     {
-      key: 'w', ctrl: true,
+      key: 'p', ctrl: true, shift: true, label: 'Command palette', category: 'Global',
+      handler: () => setShowCommandPalette(true),
+    },
+    {
+      key: 'd', ctrl: true, shift: true, label: 'Add custom command', category: 'Global',
+      handler: () => { if (!isModalOpen) { setEditingConfig(null); setShowCustomModal(true); } },
+    },
+    {
+      key: '/', ctrl: true, label: 'Shortcut help', category: 'Global',
+      handler: () => setShowShortcutHelp(true),
+    },
+    {
+      key: 'o', ctrl: true, shift: true, label: 'Project commands', category: 'Global',
+      handler: () => { if (!isModalOpen && selectedProject) setShowProjectPalette(true); },
+    },
+    {
+      key: 'w', ctrl: true, label: 'Close active tab', category: 'Global',
       handler: () => { if (!isModalOpen && activeTabId) handleCloseTab(activeTabId); },
     },
     {
-      key: 'w', ctrl: true, shift: true,
+      key: 'w', ctrl: true, shift: true, label: 'Close all tabs', category: 'Global',
       handler: () => { if (!isModalOpen) handleCloseAllTabs(); },
     },
     {
-      key: 'r', ctrl: true,
+      key: 'r', ctrl: true, label: 'Rerun stopped process', category: 'Global',
       handler: () => {
         if (!isModalOpen && activeTab && activeTab.status !== 'running') {
           handleRerun(activeTab.process_id);
@@ -481,9 +624,12 @@ const handleClearLogs = (processId: string) => {
       },
     },
     {
-      key: 'Escape',
+      key: 'Escape', label: 'Close modal', category: 'Global',
       handler: () => {
-        if (showQuickSwitch) setShowQuickSwitch(false);
+        if (showCommandPalette) setShowCommandPalette(false);
+        else if (showShortcutHelp) setShowShortcutHelp(false);
+        else if (showQuickSwitch) setShowQuickSwitch(false);
+        else if (showProjectPalette) setShowProjectPalette(false);
         else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
         else if (confirmDelete) setConfirmDelete(null);
         else if (showFooterMenu) setShowFooterMenu(false);
@@ -492,7 +638,7 @@ const handleClearLogs = (processId: string) => {
   ]);
 
   return (
-    <div className="h-screen flex flex-col" style={{ backgroundColor: '#0d0d14', color: '#e2e4f0', fontFamily: "'Inter', sans-serif" }}>
+    <div className="h-screen flex flex-col" style={{ backgroundColor: 'var(--bg-base)', color: 'var(--text-primary)', fontFamily: "'Inter', sans-serif" }}>
 
       {/* ─── Title ──────────────────────────────────────────────────────────── */}
       <Title
@@ -545,7 +691,7 @@ const handleClearLogs = (processId: string) => {
               gitBranches={gitBranches}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center flex-col gap-4" style={{ color: '#3d3f60' }}>
+            <div className="flex-1 flex items-center justify-center flex-col gap-4 text-muted">
               <Terminal size={56} className="opacity-20" />
               <div className="text-center">
                 <p className="text-sm font-medium">No active console</p>
@@ -558,9 +704,9 @@ const handleClearLogs = (processId: string) => {
                       key={`${c.name}-${i}`}
                       onClick={() => handleExecute(i)}
                       className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
-                      style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50', color: '#8890b0' }}
+                      style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
                       onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; e.currentTarget.style.color = '#e2e4f0'; }}
-                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#13131f'; e.currentTarget.style.color = '#8890b0'; }}
+                      onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--bg-surface)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
                     >
                       <ChevronRight size={14} />
                       {c.name}
@@ -604,22 +750,52 @@ const handleClearLogs = (processId: string) => {
             setSelectedProject(project);
             setShowQuickSwitch(false);
           }}
+          onExecuteCommand={(projectId, configIndex) => {
+            setShowQuickSwitch(false);
+            handleCommandPaletteSelect(projectId, configIndex);
+          }}
           onClose={() => setShowQuickSwitch(false)}
         />
       )}
 
+      {/* Shortcut Help Modal (Ctrl+/) */}
+      {showShortcutHelp && (
+        <ShortcutHelpModal
+          onClose={() => setShowShortcutHelp(false)}
+        />
+      )}
+
+      {/* Command Palette Modal (Ctrl+Shift+P) */}
+      {showCommandPalette && (
+        <CommandPaletteModal
+          projects={projects}
+          onSelectCommand={handleCommandPaletteSelect}
+          onAction={handleCommandPaletteAction}
+          onClose={() => setShowCommandPalette(false)}
+        />
+      )}
+
+      {/* Project Palette Modal (Ctrl+Shift+O) */}
+      {showProjectPalette && selectedProject && (
+        <ProjectPaletteModal
+          project={selectedProject}
+          onSelectCommand={handleProjectPaletteSelect}
+          onAction={handleProjectPaletteAction}
+          onClose={() => setShowProjectPalette(false)}
+        />
+      )}
+
       {/* Footer */}
-      <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid #1e1e38' }}>
-        <div className="flex items-center gap-4" style={{ color: '#555878' }}>
-          <span className="flex items-center gap-1">📁 {projects.length}</span>
-          <span className="flex items-center gap-1">🖥️ {processTabs.length}</span>
+      <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid var(--border-color)' }}>
+        <div className="flex items-center gap-4 text-muted">
+          <span className="flex items-center gap-1"><Folder size={11} /> {projects.length}</span>
+          <span className="flex items-center gap-1"><Monitor size={11} /> {processTabs.length}</span>
         </div>
 
         <div className="flex items-center gap-1">
           <button
             onClick={() => setTabPosition(prev => prev === 'top' ? 'bottom' : 'top')}
-            className="px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors text-[10px] font-mono"
-            style={{ color: '#555878' }}
+            className="px-2 py-0.5 rounded hover:bg-hover transition-colors text-[10px] font-mono text-muted"
             title={tabPosition === 'top' ? 'Mover tabs abajo' : 'Mover tabs arriba'}
           >
             {tabPosition === 'top' ? '▼ Tabs' : '▲ Tabs'}
@@ -628,18 +804,35 @@ const handleClearLogs = (processId: string) => {
           <button
             onClick={handleAddProject}
             disabled={isLoading}
-            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-[#1f1f35] transition-colors"
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-hover transition-colors text-muted"
           >
             {isLoading ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
             <span>Agregar</span>
           </button>
 
-          {/* Menú de acciones (gear) */}
+          {/* Keyboard shortcuts help */}
+          <button
+            onClick={() => setShowShortcutHelp(true)}
+            className="p-1 rounded hover:bg-hover transition-colors text-muted"
+            title="Keyboard shortcuts (Ctrl+/)"
+          >
+            <Keyboard size={13} />
+          </button>
+
+          {/* Theme toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-1 rounded hover:bg-hover transition-colors text-muted"
+            title={isDark ? 'Light mode' : 'Dark mode'}
+          >
+            {isDark ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
+
+          {/* Menú de acciones */}
           <div className="relative">
             <button
               onClick={() => setShowFooterMenu(!showFooterMenu)}
-              className="p-1 rounded hover:bg-[#1f1f35] transition-colors"
-              style={{ color: '#555878' }}
+              className="p-1 rounded hover:bg-hover transition-colors text-muted"
               title="Más acciones"
             >
               <MoreHorizontal size={14} />
@@ -648,20 +841,19 @@ const handleClearLogs = (processId: string) => {
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setShowFooterMenu(false)} />
                 <div
-                  className="absolute bottom-full right-0 mb-1 w-52 rounded-md shadow-xl z-20 overflow-hidden"
-                  style={{ backgroundColor: '#13131f', border: '1px solid #252540' }}
+                  className="absolute bottom-full right-0 mb-1 w-52 rounded-md shadow-xl z-20 overflow-hidden bg-surface border-standard"
                 >
                   {projects.length > 0 && (
                     <button
                       onClick={() => { setShowFooterMenu(false); handleClearAllProjects(); }}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-[#1f1f35] transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left hover:bg-hover transition-colors"
                       style={{ color: '#f87171' }}
                     >
                       <Trash2 size={12} />
                       <span>Limpiar todos los proyectos</span>
                     </button>
                   )}
-                  <div className="px-3 py-1.5 text-[10px]" style={{ color: '#3d3f60', borderTop: '1px solid #252540' }}>
+                  <div className="px-3 py-1.5 text-[10px] text-muted" style={{ borderTop: '1px solid var(--border-color)' }}>
                     HorseLaunch v0.2.1
                   </div>
                 </div>
@@ -676,9 +868,11 @@ const handleClearLogs = (processId: string) => {
 
 function App() {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <ThemeProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </ThemeProvider>
   );
 }
 

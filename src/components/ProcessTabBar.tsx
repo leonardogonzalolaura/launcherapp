@@ -13,7 +13,7 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
   if (tabs.length === 0) return null;
 
   return (
-    <div className="flex items-center gap-1 overflow-x-auto min-w-0" style={{ backgroundColor: '#10101c', borderBottom: '1px solid #1e1e38', padding: '4px 12px' }}>
+    <div className="flex items-center gap-1 overflow-x-auto min-w-0 bg-base" style={{ borderBottom: '1px solid var(--border-color)', padding: '4px 12px' }}>
       {tabs.map(tab => {
         const isActive = tab.process_id === activeTabId;
         const statusColor = tab.status === 'running' ? '#4ade80' : tab.status === 'error' ? '#f87171' : '#555878';

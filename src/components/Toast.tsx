@@ -104,7 +104,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             <button
               onClick={() => removeToast(toast.id)}
               className="flex-shrink-0 p-0.5 rounded hover:bg-black/20 transition-colors"
-              style={{ color: '#555878' }}
+              style={{ color: 'var(--text-muted)' }}
             >
               <X size={12} />
             </button>

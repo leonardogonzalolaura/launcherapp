@@ -18,7 +18,7 @@ export function CommandButton({ config, configIndex, icon, onRun, onEdit, onDele
   return (
     <div
       className="flex items-center gap-1 rounded-sm group transition-all"
-      style={{ backgroundColor: hovered ? '#1a1a2e' : '#0d0d14', border: '1px solid #1e1e38' }}
+      style={{ backgroundColor: hovered ? 'var(--bg-hover)' : 'var(--bg-base)', border: '1px solid var(--border-color)' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -31,12 +31,12 @@ export function CommandButton({ config, configIndex, icon, onRun, onEdit, onDele
           <div className="font-medium text-sm capitalize truncate flex items-center gap-1.5">
             {config.name}
             {config.group && (
-              <span className="text-[9px] px-1 py-0.5 rounded font-normal" style={{ backgroundColor: '#1e1e38', color: '#555878' }}>
+              <span className="text-[9px] px-1 py-0.5 rounded font-normal text-muted" style={{ backgroundColor: 'var(--border-color)' }}>
                 {config.group}
               </span>
             )}
           </div>
-          <div className="font-mono text-xs truncate" style={{ color: '#3d3f60' }}>{config.command}</div>
+          <div className="font-mono text-xs truncate text-muted">{config.command}</div>
         </div>
       </button>
       <div className={`flex items-center gap-0.5 pr-1.5 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0'}`}>

@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { Project } from '../types';
 
 interface QuickSwitchModalProps {
   projects: Project[];
   onSelect: (project: Project) => void;
+  onExecuteCommand?: (projectId: string, configIndex: number) => void;
   onClose: () => void;
+}
+
+interface FlatItem {
+  type: 'project' | 'command';
+  project: Project;
+  configIndex?: number;
+  configName?: string;
+  configCommand?: string;
 }
 
 const getProjectIcon = (type: string) => {
@@ -13,9 +22,10 @@ const getProjectIcon = (type: string) => {
   return icons[type] || '📁';
 };
 
-export function QuickSwitchModal({ projects, onSelect, onClose }: QuickSwitchModalProps) {
+export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose }: QuickSwitchModalProps) {
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -24,13 +34,27 @@ export function QuickSwitchModal({ projects, onSelect, onClose }: QuickSwitchMod
     return projects.filter(p => p.name.toLowerCase().includes(term));
   }, [projects, search]);
 
+  const flatItems = useMemo((): FlatItem[] => {
+    const items: FlatItem[] = [];
+    for (const p of filtered) {
+      items.push({ type: 'project', project: p });
+      if (expandedProjectId === p.id) {
+        for (let i = 0; i < p.configurations.length; i++) {
+          const c = p.configurations[i];
+          items.push({ type: 'command', project: p, configIndex: i, configName: c.name, configCommand: c.command });
+        }
+      }
+    }
+    return items;
+  }, [filtered, expandedProjectId]);
+
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [search]);
+  }, [search, expandedProjectId]);
 
   useEffect(() => {
     const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;
@@ -38,19 +62,43 @@ export function QuickSwitchModal({ projects, onSelect, onClose }: QuickSwitchMod
   }, [selectedIndex]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    const item = flatItems[selectedIndex];
+
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
-        setSelectedIndex(i => Math.min(i + 1, filtered.length - 1));
+        setSelectedIndex(i => Math.min(i + 1, flatItems.length - 1));
         break;
       case 'ArrowUp':
         e.preventDefault();
         setSelectedIndex(i => Math.max(i - 1, 0));
         break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (item?.type === 'project' && expandedProjectId !== item.project.id) {
+          setExpandedProjectId(item.project.id);
+        }
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (item?.type === 'command') {
+          setExpandedProjectId(null);
+        } else if (item?.type === 'project' && expandedProjectId === item.project.id) {
+          setExpandedProjectId(null);
+        }
+        break;
       case 'Enter':
         e.preventDefault();
-        if (filtered[selectedIndex]) {
-          onSelect(filtered[selectedIndex]);
+        if (!item) return;
+        if (item.type === 'project') {
+          if (expandedProjectId === item.project.id) {
+            onSelect(item.project);
+            onClose();
+          } else {
+            setExpandedProjectId(item.project.id);
+          }
+        } else if (item.configIndex !== undefined) {
+          onExecuteCommand?.(item.project.id, item.configIndex);
           onClose();
         }
         break;
@@ -68,13 +116,11 @@ export function QuickSwitchModal({ projects, onSelect, onClose }: QuickSwitchMod
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl"
-        style={{ backgroundColor: '#13131f', border: '1px solid #2e2e50' }}
+        className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl bg-surface border-light"
         onClick={e => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
-        {/* Search input */}
-        <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid #252540' }}>
+        <div className="flex items-center gap-3 px-4 py-3" style={{ borderBottom: '1px solid var(--border-color)' }}>
           <Search size={16} style={{ color: '#555878' }} />
           <input
             ref={inputRef}
@@ -94,52 +140,104 @@ export function QuickSwitchModal({ projects, onSelect, onClose }: QuickSwitchMod
           </button>
         </div>
 
-        {/* Results */}
         <div ref={listRef} className="max-h-80 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {flatItems.length === 0 ? (
             <div className="text-center py-8 text-xs" style={{ color: '#555878' }}>
               {search ? 'No se encontraron proyectos' : 'No hay proyectos registrados'}
             </div>
           ) : (
-            filtered.map((p, i) => (
-              <button
-                key={p.id}
-                onClick={() => { onSelect(p); onClose(); }}
-                className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
-                style={{
-                  backgroundColor: i === selectedIndex ? '#1f1f35' : 'transparent',
-                  color: i === selectedIndex ? '#e2e4f0' : '#8890b0',
-                }}
-                onMouseEnter={() => setSelectedIndex(i)}
-              >
-                <span className="text-lg flex-shrink-0">{getProjectIcon(p.project_type)}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{p.name}</div>
-                  <div className="text-[11px] truncate" style={{ color: '#555878' }}>
-                    {p.path}
-                  </div>
-                </div>
-                <span
-                  className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-                  style={{ backgroundColor: '#1a1a2e', color: '#6e7fff' }}
+            flatItems.map((item, i) => {
+              const isSelected = i === selectedIndex;
+              const isExpanded = item.type === 'project' && expandedProjectId === item.project.id;
+
+              if (item.type === 'project') {
+                return (
+                  <button
+                    key={item.project.id}
+                    onClick={() => {
+                      if (expandedProjectId === item.project.id) {
+                        onSelect(item.project);
+                        onClose();
+                      } else {
+                        setExpandedProjectId(item.project.id);
+                      }
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
+                    style={{
+                      backgroundColor: isSelected ? '#1f1f35' : 'transparent',
+                      color: isSelected ? '#e2e4f0' : '#8890b0',
+                      borderBottom: isExpanded ? '1px solid var(--border-color)' : 'none',
+                    }}
+                    onMouseEnter={() => setSelectedIndex(i)}
+                  >
+                    <span className="text-base flex-shrink-0">
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    </span>
+                    <span className="text-lg flex-shrink-0">{getProjectIcon(item.project.project_type)}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate">{item.project.name}</div>
+                      <div className="text-[11px] truncate" style={{ color: '#555878' }}>
+                        {isExpanded ? `${item.project.configurations.length} commands` : item.project.path}
+                      </div>
+                    </div>
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+                      style={{ backgroundColor: '#1a1a2e', color: '#6e7fff' }}
+                    >
+                      {item.project.project_type}
+                    </span>
+                  </button>
+                );
+              }
+
+              return (
+                <button
+                  key={`${item.project.id}-${item.configIndex}`}
+                  onClick={() => {
+                    if (item.configIndex !== undefined) {
+                      onExecuteCommand?.(item.project.id, item.configIndex);
+                      onClose();
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-2 text-left transition-colors"
+                  style={{
+                    backgroundColor: isSelected ? '#1f1f35' : 'transparent',
+                    color: isSelected ? '#e2e4f0' : '#8890b0',
+                    paddingLeft: '68px',
+                  }}
+                  onMouseEnter={() => setSelectedIndex(i)}
                 >
-                  {p.project_type}
-                </span>
-              </button>
-            ))
+                  <span style={{ color: '#6e7fff', fontSize: '10px' }}>▶</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm truncate">{item.configName}</div>
+                    <div className="text-[11px] truncate" style={{ color: '#555878' }}>
+                      {item.configCommand}
+                    </div>
+                  </div>
+                  <span
+                    className="text-[9px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
+                    style={{ backgroundColor: 'rgba(110,127,255,.15)', color: '#6e7fff' }}
+                  >
+                    Run
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
 
-        {/* Footer hint */}
-        <div className="flex items-center gap-3 px-4 py-2" style={{ backgroundColor: '#0d0d14', borderTop: '1px solid #1e1e38' }}>
-          <span className="text-[10px]" style={{ color: '#3d3f60' }}>
-            <kbd style={{ backgroundColor: '#1a1a2e', padding: '1px 4px', borderRadius: 3, border: '1px solid #2e2e50' }}>↑↓</kbd> Navegar
+        <div className="flex items-center gap-3 px-4 py-2 bg-base" style={{ borderTop: '1px solid var(--border-color)' }}>
+          <span className="text-[10px] text-muted">
+            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>↑↓</kbd> Navegar
           </span>
-          <span className="text-[10px]" style={{ color: '#3d3f60' }}>
-            <kbd style={{ backgroundColor: '#1a1a2e', padding: '1px 4px', borderRadius: 3, border: '1px solid #2e2e50' }}>Enter</kbd> Seleccionar
+          <span className="text-[10px] text-muted">
+            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>→</kbd> Expandir
           </span>
-          <span className="text-[10px]" style={{ color: '#3d3f60' }}>
-            <kbd style={{ backgroundColor: '#1a1a2e', padding: '1px 4px', borderRadius: 3, border: '1px solid #2e2e50' }}>Esc</kbd> Cerrar
+          <span className="text-[10px] text-muted">
+            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>Enter</kbd> Ejecutar
+          </span>
+          <span className="text-[10px] text-muted">
+            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>Esc</kbd> Cerrar
           </span>
         </div>
       </div>

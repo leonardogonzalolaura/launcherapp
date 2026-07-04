@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -36,6 +37,7 @@ export default {
         yellow: {
           DEFAULT: '#fbbf24',
         },
+
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
