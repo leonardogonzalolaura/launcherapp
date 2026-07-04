@@ -90,6 +90,8 @@ function AppContent() {
 
   const unlistenRef = useRef<UnlistenFn[]>([]);
   const restoringRef = useRef(false);
+  const manuallyStoppedRef = useRef<Set<string>>(new Set());
+  const notifiedRef = useRef<Set<string>>(new Set());
 
   const {
     getProjects, addProject, detectProject, removeProject, clearAllProjects,
@@ -198,11 +200,10 @@ function AppContent() {
 
   // ─── Setup event listeners ───────────────────────────────────────────────
   useEffect(() => {
-    let outputUnsub: UnlistenFn;
-    let exitUnsub: UnlistenFn;
+    let cancelled = false;
 
     (async () => {
-      outputUnsub = await onProcessOutput((msg: StreamMessage) => {
+      const outputUnsub = await onProcessOutput((msg: StreamMessage) => {
         const logLine: LogLine = {
           id: newLogId(),
           output_type: msg.output_type,
@@ -219,27 +220,30 @@ function AppContent() {
         );
       });
 
-      exitUnsub = await onProcessExit(({ process_id, exit_code }) => {
+      const exitUnsub = await onProcessExit(({ process_id, exit_code }) => {
         setProcessTabs(prev => {
           const tab = prev.find(t => t.process_id === process_id);
           if (tab) {
-            const success = exit_code === 0;
-            const title = success ? '✅ Completed' : '❌ Failed';
-            const body = success
-              ? `${tab.project_name} › ${tab.config_name} finished`
-              : `${tab.project_name} › ${tab.config_name} exited with code ${exit_code ?? 'unknown'}`;
-            (async () => {
-              try {
-                let granted = await isPermissionGranted();
-                if (!granted) {
-                  const permission = await requestPermission();
-                  granted = permission === 'granted';
-                }
-                if (granted) {
-                  sendNotification({ title, body });
-                }
-              } catch {}
-            })();
+            if (!manuallyStoppedRef.current.has(process_id) && !notifiedRef.current.has(process_id)) {
+              notifiedRef.current.add(process_id);
+              const success = exit_code === 0;
+              const title = success ? '✅ Completed' : '❌ Failed';
+              const body = success
+                ? `${tab.project_name} › ${tab.config_name} finished`
+                : `${tab.project_name} › ${tab.config_name} exited with code ${exit_code ?? 'unknown'}`;
+              (async () => {
+                try {
+                  let granted = await isPermissionGranted();
+                  if (!granted) {
+                    const permission = await requestPermission();
+                    granted = permission === 'granted';
+                  }
+                  if (granted) {
+                    sendNotification({ title, body });
+                  }
+                } catch {}
+              })();
+            }
           }
           return prev.map(t =>
             t.process_id === process_id
@@ -249,11 +253,18 @@ function AppContent() {
         });
       });
 
-      unlistenRef.current = [outputUnsub, exitUnsub];
+      if (cancelled) {
+        outputUnsub();
+        exitUnsub();
+      } else {
+        unlistenRef.current = [outputUnsub, exitUnsub];
+      }
     })();
 
     return () => {
+      cancelled = true;
       unlistenRef.current.forEach(fn => fn());
+      unlistenRef.current = [];
     };
   }, []);
 
@@ -369,6 +380,7 @@ const handleClearLogs = (processId: string) => {
   };
 
   const handleStop = async (processId: string) => {
+    manuallyStoppedRef.current.add(processId);
     try {
       await stopProcess(processId);
     } catch (e) {
@@ -379,6 +391,7 @@ const handleClearLogs = (processId: string) => {
   const handleCloseTab = async (processId: string) => {
     const tab = processTabs.find(t => t.process_id === processId);
     if (tab && tab.status === 'running') {
+      manuallyStoppedRef.current.add(processId);
       try {
         await stopProcess(processId);
       } catch (e) {
@@ -397,6 +410,7 @@ const handleClearLogs = (processId: string) => {
   const handleCloseAllTabs = async () => {
     for (const tab of processTabs) {
       if (tab.status === 'running') {
+        manuallyStoppedRef.current.add(tab.process_id);
         try { await stopProcess(tab.process_id); } catch {}
       }
     }
