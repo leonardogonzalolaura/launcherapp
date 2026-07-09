@@ -5,6 +5,10 @@ import { keymap } from '@codemirror/view';
 import { python } from '@codemirror/lang-python';
 import { javascript } from '@codemirror/lang-javascript';
 import { json } from '@codemirror/lang-json';
+import { css } from '@codemirror/lang-css';
+import { html } from '@codemirror/lang-html';
+import { java } from '@codemirror/lang-java';
+import { csharp } from '@replit/codemirror-lang-csharp';
 
 interface CodeEditorProps {
   content: string;
@@ -48,6 +52,10 @@ function getExtensions(language: string, onSave: () => void, onChange: (c: strin
     case 'python': ext.push(python()); break;
     case 'javascript': case 'typescript': ext.push(javascript({ typescript: language === 'typescript' })); break;
     case 'json': ext.push(json()); break;
+    case 'css': ext.push(css()); break;
+    case 'html': ext.push(html()); break;
+    case 'java': ext.push(java()); break;
+    case 'csharp': ext.push(csharp()); break;
   }
 
   ext.push(keymap.of([

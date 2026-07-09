@@ -6,15 +6,17 @@ interface QuickSwitchModalProps {
   projects: Project[];
   onSelect: (project: Project) => void;
   onExecuteCommand?: (projectId: string, configIndex: number) => void;
+  onOpenEditor?: (project: Project) => void;
   onClose: () => void;
 }
 
 interface FlatItem {
-  type: 'project' | 'command';
+  type: 'project' | 'command' | 'action';
   project: Project;
   configIndex?: number;
   configName?: string;
   configCommand?: string;
+  action?: string;
 }
 
 const getProjectIcon = (type: string) => {
@@ -22,7 +24,7 @@ const getProjectIcon = (type: string) => {
   return icons[type] || '📁';
 };
 
-export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose }: QuickSwitchModalProps) {
+export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenEditor, onClose }: QuickSwitchModalProps) {
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -43,6 +45,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose
           const c = p.configurations[i];
           items.push({ type: 'command', project: p, configIndex: i, configName: c.name, configCommand: c.command });
         }
+        items.push({ type: 'action', project: p, action: 'open-editor', configName: 'Open file editor', configCommand: 'Browse and edit project files' });
       }
     }
     return items;
@@ -97,6 +100,9 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose
           } else {
             setExpandedProjectId(item.project.id);
           }
+        } else if (item.action === 'open-editor') {
+          onOpenEditor?.(item.project);
+          onClose();
         } else if (item.configIndex !== undefined) {
           onExecuteCommand?.(item.project.id, item.configIndex);
           onClose();
@@ -190,11 +196,15 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose
                 );
               }
 
+              const isEditorAction = item.action === 'open-editor';
               return (
                 <button
-                  key={`${item.project.id}-${item.configIndex}`}
+                  key={`${item.project.id}-${item.configIndex ?? item.action}`}
                   onClick={() => {
-                    if (item.configIndex !== undefined) {
+                    if (isEditorAction) {
+                      onOpenEditor?.(item.project);
+                      onClose();
+                    } else if (item.configIndex !== undefined) {
                       onExecuteCommand?.(item.project.id, item.configIndex);
                       onClose();
                     }
@@ -207,7 +217,9 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose
                   }}
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
-                  <span style={{ color: '#6e7fff', fontSize: '10px' }}>▶</span>
+                  <span style={{ color: isEditorAction ? '#c084fc' : '#6e7fff', fontSize: '10px' }}>
+                    {isEditorAction ? '📝' : '▶'}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{item.configName}</div>
                     <div className="text-[11px] truncate" style={{ color: '#555878' }}>
@@ -216,9 +228,12 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onClose
                   </div>
                   <span
                     className="text-[9px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
-                    style={{ backgroundColor: 'rgba(110,127,255,.15)', color: '#6e7fff' }}
+                    style={{
+                      backgroundColor: isEditorAction ? 'rgba(192,132,252,.15)' : 'rgba(110,127,255,.15)',
+                      color: isEditorAction ? '#c084fc' : '#6e7fff',
+                    }}
                   >
-                    Run
+                    {isEditorAction ? 'Open' : 'Run'}
                   </span>
                 </button>
               );

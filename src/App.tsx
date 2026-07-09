@@ -26,6 +26,7 @@ import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
+const MAX_LOG_LINES = 5000;
 
 // Storage keys
 const STORAGE_KEYS = {
@@ -216,7 +217,7 @@ function AppContent() {
         setProcessTabs(prev =>
           prev.map(tab =>
             tab.process_id === msg.process_id
-              ? { ...tab, logs: [...tab.logs, logLine] }
+              ? { ...tab, logs: [...tab.logs, logLine].slice(-MAX_LOG_LINES) }
               : tab
           )
         );
@@ -742,6 +743,16 @@ const handleClearLogs = (processId: string) => {
                       {c.name}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setShowFileEditor(true)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
+                    style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; e.currentTarget.style.color = '#e2e4f0'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--bg-surface)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    title="Open file editor (Ctrl+Shift+E)"
+                  >
+                    📝 Editor
+                  </button>
                 </div>
               )}
             </div>
@@ -783,6 +794,11 @@ const handleClearLogs = (processId: string) => {
           onExecuteCommand={(projectId, configIndex) => {
             setShowQuickSwitch(false);
             handleCommandPaletteSelect(projectId, configIndex);
+          }}
+          onOpenEditor={(project) => {
+            setSelectedProject(project);
+            setShowFileEditor(true);
+            setShowQuickSwitch(false);
           }}
           onClose={() => setShowQuickSwitch(false)}
         />

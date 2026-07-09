@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
@@ -25,6 +25,7 @@ const LANGUAGE_MAP: Record<string, string> = {
   json: 'json', md: 'markdown', css: 'css', html: 'html', rs: 'rust',
   yaml: 'yaml', yml: 'yaml', toml: 'toml', xml: 'xml', sql: 'sql',
   sh: 'shell', bat: 'shell', ps1: 'shell',
+  cs: 'csharp', java: 'java',
 };
 
 function detectLanguage(path: string): string {
@@ -41,9 +42,12 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [confirmClose, setConfirmClose] = useState<boolean>(false);
   const [explorerCollapsed, setExplorerCollapsed] = useState<boolean>(false);
+  const [isMaximized, setIsMaximized] = useState(false);
+  const [explorerWidth, setExplorerWidth] = useState(220);
   const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
   const openFilesRef = useRef(openFiles);
   const activeIndexRef = useRef(activeIndex);
+  const isDraggingRef = useRef(false);
 
   openFilesRef.current = openFiles;
   activeIndexRef.current = activeIndex;
@@ -115,6 +119,28 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
     ));
   }, []);
 
+  const handleExplorerResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    isDraggingRef.current = true;
+    const startX = e.clientX;
+    const startWidth = explorerWidth;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      if (!isDraggingRef.current) return;
+      const newWidth = startWidth + (moveEvent.clientX - startX);
+      setExplorerWidth(Math.max(150, Math.min(500, newWidth)));
+    };
+
+    const handleMouseUp = () => {
+      isDraggingRef.current = false;
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [explorerWidth]);
+
   const handleModalClose = useCallback(async () => {
     const dirty = openFiles.some(f => f.content !== f.savedContent);
     if (dirty) {
@@ -158,10 +184,10 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
       style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
     >
       <div
-        className="flex flex-col rounded-xl overflow-hidden shadow-2xl"
+        className={`flex flex-col overflow-hidden shadow-2xl ${isMaximized ? 'rounded-none' : 'rounded-xl'}`}
         style={{
-          width: '92vw',
-          height: '88vh',
+          width: isMaximized ? '100vw' : '92vw',
+          height: isMaximized ? '100vh' : '88vh',
           backgroundColor: 'var(--bg-surface)',
           border: '1px solid var(--border-color)',
         }}
@@ -203,6 +229,13 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
               </>
             )}
             <button
+              onClick={() => setIsMaximized(prev => !prev)}
+              className="p-1 rounded hover:bg-hover transition-colors text-muted"
+              title={isMaximized ? 'Restore' : 'Maximize'}
+            >
+              {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+            <button
               onClick={handleModalClose}
               className="p-1 rounded hover:bg-hover transition-colors text-muted"
               title="Close (Esc)"
@@ -226,14 +259,25 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
         <div className="flex-1 flex overflow-hidden">
           {/* File Explorer */}
           <div
-            className="flex-shrink-0 overflow-hidden transition-all duration-200"
+            className="flex-shrink-0 overflow-hidden"
             style={{
-              width: explorerCollapsed ? '0px' : '220px',
+              width: explorerCollapsed ? '0px' : `${explorerWidth}px`,
               borderRight: explorerCollapsed ? 'none' : '1px solid var(--border-color)',
+              transition: isDraggingRef.current ? 'none' : 'width 200ms',
             }}
           >
             {!explorerCollapsed && <FileExplorer rootPath={projectPath} onOpenFile={openFile} />}
           </div>
+
+          {/* Resize handle */}
+          {!explorerCollapsed && (
+            <div
+              onMouseDown={handleExplorerResizeStart}
+              className="flex-shrink-0 cursor-col-resize hover:bg-[#6e7fff] transition-colors"
+              style={{ width: '4px', backgroundColor: 'transparent', backgroundClip: 'content-box' }}
+              title="Drag to resize"
+            />
+          )}
 
           {/* Editor */}
           <div className="flex-1 flex flex-col overflow-hidden">
