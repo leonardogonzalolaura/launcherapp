@@ -66,9 +66,12 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [searchResults, setSearchResults] = useState<TreeNode[] | null>(null);
+  const [searching, setSearching] = useState(false);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
     setLoading(true);
@@ -82,12 +85,67 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     treeRef.current?.focus();
   }, []);
 
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const matchesSearch = useCallback((name: string): boolean => {
     if (!search.trim()) return true;
     return name.toLowerCase().includes(search.toLowerCase());
   }, [search]);
 
+  useEffect(() => {
+    const term = search.trim();
+    if (!term) {
+      setSearchResults(null);
+      setSearching(false);
+      return;
+    }
+
+    setSearching(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    debounceRef.current = setTimeout(async () => {
+      const results: TreeNode[] = [];
+      const visited = new Set<string>();
+
+      async function walk(dir: string) {
+        if (visited.has(dir)) return;
+        visited.add(dir);
+        try {
+          const entries = await readDir(dir);
+          for (const entry of entries) {
+            if (!entry.name || EXCLUDED_DIRS.has(entry.name)) continue;
+            if (entry.name.startsWith('.')) continue;
+            const fullPath = `${dir}/${entry.name}`;
+            if (entry.isFile && entry.name.toLowerCase().includes(term)) {
+              results.push({ name: entry.name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
+            }
+            if (!entry.isFile) {
+              await walk(fullPath);
+            }
+          }
+        } catch { /* skip unreadable dirs */ }
+      }
+
+      await walk(rootPath);
+      results.sort((a, b) => a.name.localeCompare(b.name));
+      setSearchResults(results);
+      setSearching(false);
+    }, 300);
+
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [search, rootPath]);
+
   const flatNodes = useMemo(() => {
+    if (search.trim() && searchResults) return searchResults;
     const result: TreeNode[] = [];
     const walk = (nodes: TreeNode[]) => {
       for (const node of nodes) {
@@ -100,7 +158,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     };
     walk(rootNodes);
     return result;
-  }, [rootNodes, matchesSearch]);
+  }, [rootNodes, matchesSearch, search, searchResults]);
 
   const focusNode = useCallback((path: string | null) => {
     if (!path) return;
@@ -264,6 +322,37 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
       >
         {loading ? (
           <div className="text-xs text-center py-8 text-muted">Loading...</div>
+        ) : search.trim() ? (
+          searching ? (
+            <div className="text-xs text-center py-8 text-muted">Searching...</div>
+          ) : searchResults === null ? (
+            <div className="text-xs text-center py-8 text-muted">Type to search files...</div>
+          ) : searchResults.length === 0 ? (
+            <div className="text-xs text-center py-8 text-muted">No files found</div>
+          ) : (
+            <div className="py-1">
+              <div className="text-[10px] px-3 py-1 text-muted">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
+              {searchResults.map((node) => {
+                const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
+                const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
+                return (
+                  <button
+                    key={node.path}
+                    onClick={() => onOpenFile(node.path)}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs rounded transition-colors hover:bg-hover"
+                    style={{ color: 'var(--text-secondary)' }}
+                    title={node.path}
+                  >
+                    <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
+                    <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
+                    {displayPath && (
+                      <span className="truncate text-[10px] text-muted flex-shrink-0 ml-auto">{displayPath}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )
         ) : (
           rootNodes.map(node => renderNode(node, 0))
         )}

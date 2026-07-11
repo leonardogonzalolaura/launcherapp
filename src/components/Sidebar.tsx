@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, FolderOpen, ChevronDown, Play, Hammer,
   Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft, Search, X,
@@ -86,6 +86,17 @@ export function Sidebar({
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setIsCollapsed(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(projectSearchTerm.toLowerCase())

@@ -84,6 +84,7 @@ function AppContent() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showProjectPalette, setShowProjectPalette] = useState(false);
   const [showFileEditor, setShowFileEditor] = useState(false);
+  const [editorProject, setEditorProject] = useState<Project | null>(null);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -507,6 +508,7 @@ const handleClearLogs = (processId: string) => {
   const contextProject = activeTab
     ? projects.find(p => p.id === activeTab.project_id) ?? selectedProject
     : selectedProject;
+  const editorTarget = editorProject || contextProject;
 
   const handleCommandPaletteAction = (action: string) => {
     switch (action) {
@@ -796,6 +798,7 @@ const handleClearLogs = (processId: string) => {
             handleCommandPaletteSelect(projectId, configIndex);
           }}
           onOpenEditor={(project) => {
+            setEditorProject(project);
             setSelectedProject(project);
             setShowFileEditor(true);
             setShowQuickSwitch(false);
@@ -832,12 +835,12 @@ const handleClearLogs = (processId: string) => {
       )}
 
       {/* File Editor Modal (Ctrl+Shift+E) */}
-      {showFileEditor && contextProject && (
+      {showFileEditor && editorTarget && (
         <FileEditorModal
-          projectPath={contextProject.path}
-          projectName={contextProject.name}
-          gitBranch={gitBranches[contextProject.id]}
-          onClose={() => setShowFileEditor(false)}
+          projectPath={editorTarget.path}
+          projectName={editorTarget.name}
+          gitBranch={gitBranches[editorTarget.id]}
+          onClose={() => { setShowFileEditor(false); setEditorProject(null); }}
         />
       )}
 

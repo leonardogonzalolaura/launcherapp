@@ -57,7 +57,18 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [search, expandedProjectId]);
+  }, [search]);
+
+  useEffect(() => {
+    if (expandedProjectId) {
+      const idx = flatItems.findIndex(
+        item => item.type === 'project' && item.project.id === expandedProjectId
+      );
+      if (idx >= 0) {
+        setSelectedIndex(idx + 1);
+      }
+    }
+  }, [expandedProjectId]);
 
   useEffect(() => {
     const el = listRef.current?.children[selectedIndex] as HTMLElement | undefined;

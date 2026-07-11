@@ -165,6 +165,11 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
         saveFile();
         return;
       }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+        e.preventDefault();
+        setIsMaximized(prev => !prev);
+        return;
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
         if (confirmClose) {
