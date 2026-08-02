@@ -4,26 +4,12 @@ on:
   push:
     tags:
       - 'v*'
-jobs:
-  create-release:
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    outputs:
-      release_id: ${{ steps.create-release.outputs.id }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Create release
-        id: create-release
-        uses: taiki-e/create-gh-release-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
+jobs:
   build-tauri:
     permissions:
       contents: write
     runs-on: windows-latest
-    needs: create-release
     steps:
       - uses: actions/checkout@v4
       - name: Setup Node.js
@@ -44,4 +30,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
+          tagName: v__VERSION__
+          releaseName: 'launcherapp v__VERSION__'
+          releaseBody: 'Instaladores de Windows (NSIS .exe y MSI).'
