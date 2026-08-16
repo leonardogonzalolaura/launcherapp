@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, RangeSetBuilder } from '@codemirror/state';
-import { keymap, ViewPlugin, Decoration, DecorationSet, ViewUpdate } from '@codemirror/view';
+import { EditorState, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
+import { keymap, ViewPlugin, Decoration, DecorationSet, ViewUpdate, hoverTooltip } from '@codemirror/view';
 import { search, setSearchQuery, getSearchQuery, SearchQuery, findNext, findPrevious, replaceNext, replaceAll } from '@codemirror/search';
 import { Search as SearchIcon, ChevronUp, ChevronDown, X } from 'lucide-react';
 import { python } from '@codemirror/lang-python';
@@ -11,15 +11,254 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { java } from '@codemirror/lang-java';
 import { csharp } from '@replit/codemirror-lang-csharp';
+import type { Parser } from '@lezer/common';
+import { isNavLanguage, tokenAt, getImportInfo, findDefinitionLine, resolveImport, findFileByTypeName, hasCachedFile, memberReceiverName, findMethodTarget } from '../util/editorNav';
 
 interface CodeEditorProps {
   content: string;
   language: string;
+  projectPath: string;
+  filePath: string;
+  initialLine?: number;
   onChange: (content: string) => void;
   onSave: () => void;
+  onOpenFile: (path: string, line?: number) => void;
+  onConsumedNav?: () => void;
 }
 
-function getExtensions(language: string, onSave: () => void, onChange: (c: string) => void, onEditorUpdate: (view: EditorView) => void) {
+interface NavContext {
+  projectPath: string;
+  filePath: string;
+  parser: Parser;
+  onOpenFile: (path: string, line?: number) => void;
+}
+
+function getLanguageParser(language: string): Parser | null {
+  switch (language) {
+    case 'python': return python().language.parser;
+    case 'javascript': case 'typescript': return javascript({ typescript: language === 'typescript', jsx: true }).language.parser;
+    case 'java': return java().language.parser;
+    case 'csharp': return csharp().language.parser;
+    default: return null;
+  }
+}
+
+function buildTooltipDom(title: string, hint: string): HTMLElement {
+  const wrap = document.createElement('div');
+  wrap.style.backgroundColor = 'var(--bg-elevated)';
+  wrap.style.border = '1px solid var(--border-color)';
+  wrap.style.borderRadius = '8px';
+  wrap.style.padding = '6px 10px';
+  wrap.style.fontSize = '11px';
+  wrap.style.boxShadow = '0 4px 12px rgba(0,0,0,.35)';
+  wrap.style.display = 'flex';
+  wrap.style.flexDirection = 'column';
+  wrap.style.gap = '3px';
+  const t = document.createElement('span');
+  t.textContent = title;
+  t.style.color = 'var(--text-primary)';
+  t.style.fontWeight = '600';
+  const h = document.createElement('span');
+  h.textContent = hint;
+  h.style.color = 'var(--text-muted)';
+  h.style.fontSize = '10px';
+  wrap.appendChild(t);
+  wrap.appendChild(h);
+  return wrap;
+}
+
+const ctrlHoverMark = Decoration.mark({ class: 'cm-ctrl-link' });
+const setCtrlHover = StateEffect.define<{ from: number; to: number } | null>();
+
+const ctrlHoverField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    deco = deco.map(tr.changes);
+    for (const e of tr.effects) {
+      if (e.is(setCtrlHover)) {
+        deco = e.value == null ? Decoration.none : Decoration.set([ctrlHoverMark.range(e.value.from, e.value.to)]);
+      }
+    }
+    return deco;
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+function ctrlHoverExtension(language: string, projectPath: string) {
+  return [
+    ctrlHoverField,
+    ViewPlugin.fromClass(class {
+      ctrlDown = false;
+      mouseX = 0;
+      mouseY = 0;
+      lastKey: string | null = null;
+
+      constructor(private view: EditorView) {
+        view.contentDOM.addEventListener('mousemove', this.onMouseMove);
+        view.contentDOM.addEventListener('mouseleave', this.onMouseLeave);
+        window.addEventListener('keydown', this.onKeyDown);
+        window.addEventListener('keyup', this.onKeyUp);
+        window.addEventListener('blur', this.onBlur);
+      }
+
+      destroy() {
+        this.view.contentDOM.removeEventListener('mousemove', this.onMouseMove);
+        this.view.contentDOM.removeEventListener('mouseleave', this.onMouseLeave);
+        window.removeEventListener('keydown', this.onKeyDown);
+        window.removeEventListener('keyup', this.onKeyUp);
+        window.removeEventListener('blur', this.onBlur);
+      }
+
+      onKeyDown = (e: KeyboardEvent) => {
+        if (e.key === 'Control' || e.key === 'Meta') {
+          this.ctrlDown = true;
+          this.refresh();
+        }
+      };
+      onKeyUp = (e: KeyboardEvent) => {
+        if (e.key === 'Control' || e.key === 'Meta') {
+          this.ctrlDown = false;
+          this.setTarget(null);
+        }
+      };
+      onBlur = () => {
+        this.ctrlDown = false;
+        this.setTarget(null);
+      };
+
+      onMouseMove = (e: MouseEvent) => {
+        this.mouseX = e.clientX;
+        this.mouseY = e.clientY;
+        this.refresh();
+      };
+      onMouseLeave = () => {
+        this.setTarget(null);
+      };
+
+      private setTarget(target: { from: number; to: number } | null) {
+        const key = target ? `${target.from}:${target.to}` : '';
+        if (key === this.lastKey) return;
+        this.lastKey = key;
+        this.view.dispatch({ effects: setCtrlHover.of(target) });
+      }
+
+      private refresh() {
+        if (!this.ctrlDown) return;
+        const view = this.view;
+        const pos = view.posAtCoords({ x: this.mouseX, y: this.mouseY });
+        let target: { from: number; to: number } | null = null;
+        if (pos != null) {
+          const token = tokenAt(view, pos, language);
+          if (token) {
+            if (getImportInfo(view, token, language)) {
+              target = { from: token.from, to: token.to };
+            } else {
+              const line = findDefinitionLine(view, token.name, token.from, language);
+              if (line != null) {
+                target = { from: token.from, to: token.to };
+              } else if (language === 'java' || language === 'csharp') {
+                const exts = language === 'java' ? ['java'] : ['cs'];
+                if (hasCachedFile(projectPath, token.name, exts)) {
+                  target = { from: token.from, to: token.to };
+                } else if (language === 'csharp') {
+                  const receiver = memberReceiverName(view, token, language);
+                  if (receiver && hasCachedFile(projectPath, receiver, exts)) {
+                    target = { from: token.from, to: token.to };
+                  }
+                }
+              }
+            }
+          }
+        }
+        this.setTarget(target);
+      }
+    }),
+  ];
+}
+
+function navExtensions(language: string, nav: NavContext) {
+  const { projectPath, filePath, parser, onOpenFile } = nav;
+  return [
+    ctrlHoverExtension(language, projectPath),
+    hoverTooltip((view, pos) => {
+      if (!isNavLanguage(language)) return null;
+      const token = tokenAt(view, pos, language);
+      if (!token) return null;
+      const imp = getImportInfo(view, token, language);
+      if (imp) {
+        const title = imp.importedName
+          ? `Import ${imp.importedName} de '${imp.module}'`
+          : `Import '${imp.module}'`;
+        return { pos: token.from, end: token.to, above: true, create: () => ({ dom: buildTooltipDom(title, 'Ctrl+click para abrir') }) };
+      }
+      const line = findDefinitionLine(view, token.name, token.from, language);
+      if (line == null) return null;
+      return {
+        pos: token.from,
+        end: token.to,
+        above: true,
+        create: () => ({ dom: buildTooltipDom(token.name, `Línea ${line + 1} · Ctrl+click para ir`) }),
+      };
+    }),
+    EditorView.domEventHandlers({
+      click: (event, view) => {
+        if (!(event.ctrlKey || event.metaKey)) return false;
+        const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+        if (pos == null) return false;
+        const token = tokenAt(view, pos, language);
+        if (!token) return false;
+
+        const imp = getImportInfo(view, token, language);
+        if (imp) {
+          event.preventDefault();
+          void resolveImport({ projectPath, filePath, info: imp, parser }).then((res) => {
+            if (res) onOpenFile(res.file, res.line);
+          });
+          return true;
+        }
+
+        const line = findDefinitionLine(view, token.name, token.from, language);
+        if (line != null) {
+          event.preventDefault();
+          const lineStart = view.state.doc.line(line + 1).from;
+          view.dispatch({ selection: { anchor: lineStart }, scrollIntoView: true });
+          view.focus();
+          return true;
+        }
+
+        if (language === 'java' || language === 'csharp') {
+          event.preventDefault();
+          const openType = () =>
+            findFileByTypeName(projectPath, token.name, language).then((res) => {
+              if (res) onOpenFile(res.file, res.line);
+            });
+          if (language === 'csharp') {
+            const receiver = memberReceiverName(view, token, language);
+            if (receiver) {
+              void findMethodTarget(projectPath, receiver, token.name, parser, language).then((res) => {
+                if (res) onOpenFile(res.file, res.line);
+                else void openType();
+              });
+              return true;
+            }
+          }
+          void openType();
+          return true;
+        }
+
+        return false;
+      },
+    }),
+  ];
+}
+
+function getExtensions(
+  language: string,
+  onSave: () => void,
+  onChange: (c: string) => void,
+  onEditorUpdate: (view: EditorView) => void,
+  nav?: NavContext,
+) {
   const ext: any[] = [
     basicSetup,
     search({ top: true }),
@@ -57,17 +296,29 @@ function getExtensions(language: string, onSave: () => void, onChange: (c: strin
         backgroundColor: 'rgba(192,132,252,.45)',
         outline: '1px solid #c084fc',
       },
+      '.cm-ctrl-link': {
+        textDecoration: 'underline',
+        textDecorationColor: 'var(--accent)',
+        textDecorationThickness: '1.5px',
+        textUnderlineOffset: '2px',
+        cursor: 'pointer',
+      },
     }),
   ];
 
   switch (language) {
     case 'python': ext.push(python()); break;
-    case 'javascript': case 'typescript': ext.push(javascript({ typescript: language === 'typescript' })); break;
+    case 'javascript': case 'typescript': ext.push(javascript({ typescript: language === 'typescript', jsx: true })); break;
     case 'json': ext.push(json()); break;
     case 'css': ext.push(css()); break;
     case 'html': ext.push(html()); break;
     case 'java': ext.push(java()); break;
     case 'csharp': ext.push(csharp()); break;
+  }
+
+  const parser = getLanguageParser(language);
+  if (nav && parser) {
+    ext.push(...navExtensions(language, nav));
   }
 
   // El find bar propio se abre con Mod-b (libre en CodeMirror); Ctrl+f/g quedan
@@ -127,11 +378,13 @@ function findHighlightExtension() {
   });
 }
 
-export function CodeEditor({ content, language, onChange, onSave }: CodeEditorProps) {
+export function CodeEditor({ content, language, projectPath, filePath, initialLine, onChange, onSave, onOpenFile, onConsumedNav }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
   const onSaveRef = useRef(onSave);
+  const onOpenFileRef = useRef(onOpenFile);
+  const onConsumedNavRef = useRef(onConsumedNav);
   const findInputRef = useRef<HTMLInputElement>(null);
 
   const [findOpen, setFindOpen] = useState(false);
@@ -146,6 +399,8 @@ export function CodeEditor({ content, language, onChange, onSave }: CodeEditorPr
 
   onChangeRef.current = onChange;
   onSaveRef.current = onSave;
+  onOpenFileRef.current = onOpenFile;
+  onConsumedNavRef.current = onConsumedNav;
 
   const updateMatchInfo = useCallback((view: EditorView) => {
     const q = getSearchQuery(view.state);
@@ -253,6 +508,7 @@ export function CodeEditor({ content, language, onChange, onSave }: CodeEditorPr
         () => onSaveRef.current(),
         (c: string) => onChangeRef.current(c),
         (view: EditorView) => { if (findOpenRef.current) updateMatchInfo(view); },
+        { projectPath, filePath, parser: getLanguageParser(language)!, onOpenFile: (path, line) => onOpenFileRef.current(path, line) },
       ),
     });
 
@@ -263,7 +519,19 @@ export function CodeEditor({ content, language, onChange, onSave }: CodeEditorPr
       view.destroy();
       viewRef.current = null;
     };
-  }, [language, updateMatchInfo]);
+  }, [language, updateMatchInfo, projectPath, filePath]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (view && initialLine != null && initialLine >= 0) {
+      const doc = view.state.doc;
+      const line = Math.min(initialLine, doc.lines - 1);
+      const lineStart = doc.line(line + 1).from;
+      view.dispatch({ selection: { anchor: lineStart }, scrollIntoView: true });
+      view.focus();
+      onConsumedNavRef.current?.();
+    }
+  }, [initialLine]);
 
   return (
     <div className="flex flex-col h-full">

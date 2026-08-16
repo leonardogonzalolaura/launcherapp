@@ -45,6 +45,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
   const [explorerCollapsed, setExplorerCollapsed] = useState<boolean>(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(220);
+  const [jumpTo, setJumpTo] = useState<{ path: string; line: number } | null>(null);
   const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
   const openFilesRef = useRef(openFiles);
   const activeIndexRef = useRef(activeIndex);
@@ -119,6 +120,12 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
       i === idx ? { ...f, content } : f
     ));
   }, []);
+
+  const handleOpenForNav = useCallback((path: string, line?: number) => {
+    if (line != null) setJumpTo({ path, line });
+    else setJumpTo(null);
+    void openFile(path);
+  }, [openFile]);
 
   const handleExplorerResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -292,8 +299,13 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
                 key={activeFile.path}
                 content={activeFile.content}
                 language={activeFile.language}
+                projectPath={projectPath}
+                filePath={activeFile.path}
+                initialLine={jumpTo && jumpTo.path === activeFile.path ? jumpTo.line : undefined}
                 onChange={editContent}
                 onSave={saveFile}
+                onOpenFile={handleOpenForNav}
+                onConsumedNav={() => setJumpTo(null)}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center flex-col gap-3 text-muted">
