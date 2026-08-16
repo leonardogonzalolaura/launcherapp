@@ -211,7 +211,7 @@ const isGenericError = (content: string): boolean => {
 };
 
 // ─── FUNCIÓN PRINCIPAL DE CLASIFICACIÓN ──────────────────────────────────────
-const classifyLine = (
+export const classifyLine = (
   content: string, 
   outputType: string, 
   projectType?: string
@@ -286,7 +286,7 @@ const classifyLine = (
 };
 
 // Versión con window.open para URLs clickeables y JSON viewer
-const renderContentWithLinks = (content: string) => {
+export const renderContentWithLinks = (content: string) => {
   // 🔥 Si es JSON, usar el JsonViewer component
   if (isJsonLine(content)) {
     return <JsonViewer content={content} />;

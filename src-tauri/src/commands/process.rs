@@ -1,7 +1,7 @@
 use regex::Regex;
 use std::process::Stdio;
 use tokio::process::Command;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
@@ -13,6 +13,21 @@ use once_cell::sync::Lazy;
 
 // Hides the console window on Windows
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Force UTF-8 encoding for the PowerShell session and any child processes.
+/// - chcp 65001      : sets the Windows console codepage to UTF-8 at the Win32 API level,
+///                     which covers native binaries (C/C++, Java, .NET, etc.) that read
+///                     GetConsoleCP() directly — the layer that [Console]::OutputEncoding
+///                     alone does NOT reach.
+/// - OutputEncoding  : makes PowerShell itself write UTF-8 to the pipe.
+/// - InputEncoding   : makes PowerShell read UTF-8 from stdin.
+/// - PYTHONIOENCODING: legacy env-var respected by Python 3.6+.
+/// - PYTHONUTF8=1    : Python 3.7+ global UTF-8 mode (strongest guarantee for Python).
+const UTF8_PREFIX: &str = "chcp 65001 | Out-Null; \
+                           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
+                           [Console]::InputEncoding  = [System.Text.Encoding]::UTF8; \
+                           $env:PYTHONIOENCODING = 'utf-8'; \
+                           $env:PYTHONUTF8 = '1'; ";
 
 
 static ANSI_REGEX: Lazy<Regex> = Lazy::new(|| {
@@ -50,6 +65,7 @@ pub struct ProcessInfo {
 struct ActiveEntry {
     handle: tokio::task::JoinHandle<()>,
     pid: u32,
+    stdin: Option<tokio::process::ChildStdin>,
 }
 
 pub struct ProcessManager {
@@ -70,22 +86,13 @@ impl ProcessManager {
     fn build_command(command_str: &str, working_dir: &Path, env_vars: &HashMap<String, String>) -> Command {
         let mut cmd = Command::new("powershell");
 
-        // Force UTF-8 encoding for the PowerShell session and any child processes.
-        // - chcp 65001      : sets the Windows console codepage to UTF-8 at the Win32 API level,
-        //                     which covers native binaries (C/C++, Java, .NET, etc.) that read
-        //                     GetConsoleCP() directly — the layer that [Console]::OutputEncoding
-        //                     alone does NOT reach.
-        // - OutputEncoding  : makes PowerShell itself write UTF-8 to the pipe.
-        // - InputEncoding   : makes PowerShell read UTF-8 from stdin.
-        // - PYTHONIOENCODING: legacy env-var respected by Python 3.6+.
-        // - PYTHONUTF8=1    : Python 3.7+ global UTF-8 mode (strongest guarantee for Python).
-        let utf8_prefix = "chcp 65001 | Out-Null; \
-                           [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; \
-                           [Console]::InputEncoding  = [System.Text.Encoding]::UTF8; \
-                           $env:PYTHONIOENCODING = 'utf-8'; \
-                           $env:PYTHONUTF8 = '1'; ";
-
-        let wrapped_command = format!("{}{}", utf8_prefix, command_str);
+        // When the command is "-", PowerShell reads commands from stdin
+        // (interactive session). The UTF-8 prefix is written to stdin separately.
+        let wrapped_command = if command_str == "-" {
+            command_str.to_string()
+        } else {
+            format!("{}{}", UTF8_PREFIX, command_str)
+        };
 
         cmd.args(&[
             "-NoProfile",
@@ -96,13 +103,13 @@ impl ProcessManager {
 
         #[cfg(target_os = "windows")]
         {
-            use std::os::windows::process::CommandExt;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
 
         cmd.current_dir(working_dir);
         cmd.stdout(Stdio::piped());
         cmd.stderr(Stdio::piped());
+        cmd.stdin(Stdio::piped());
 
         // Apply user-defined env vars (they can override the defaults above if needed)
         for (k, v) in env_vars {
@@ -151,6 +158,7 @@ impl ProcessManager {
 
         let stdout = child.stdout.take().expect("no stdout");
         let stderr = child.stderr.take().expect("no stderr");
+        let stdin = child.stdin.take();
 
         let now = chrono::Local::now().to_rfc3339();
 
@@ -273,7 +281,7 @@ impl ProcessManager {
         // Store handle + PID
         {
             let mut active = self.active.lock().await;
-            active.insert(process_id.clone(), ActiveEntry { handle, pid: os_pid });
+            active.insert(process_id.clone(), ActiveEntry { handle, pid: os_pid, stdin });
         }
 
         Ok(info)
@@ -324,6 +332,24 @@ impl ProcessManager {
             .filter(|p| active.contains_key(&p.id) && p.status == "running")
             .cloned()
             .collect()
+    }
+
+    /// Writes a single line of input to a process's stdin (used for interactive
+    /// sessions such as the embedded PowerShell).
+    pub async fn write_stdin(&self, process_id: &str, input: &str) -> Result<(), String> {
+        let mut active = self.active.lock().await;
+        let entry = active.get_mut(process_id)
+            .ok_or_else(|| "Process is not running".to_string())?;
+        let stdin = entry.stdin.as_mut()
+            .ok_or_else(|| "Process is not accepting input".to_string())?;
+
+        stdin.write_all(input.as_bytes()).await
+            .map_err(|e| format!("Failed to write to process stdin: {}", e))?;
+        stdin.write_all(b"\n").await
+            .map_err(|e| format!("Failed to write to process stdin: {}", e))?;
+        stdin.flush().await
+            .map_err(|e| format!("Failed to flush process stdin: {}", e))?;
+        Ok(())
     }
 }
 
@@ -385,6 +411,59 @@ pub async fn stop_process(
     process_id: String,
 ) -> Result<(), String> {
     state.process_manager.stop(&process_id, &app_handle).await
+}
+
+/// Spawns a persistent PowerShell session for a project, reading commands from
+/// stdin so the session keeps its state (working directory, variables, etc.).
+#[command]
+pub async fn spawn_ps_shell(
+    app_handle: AppHandle,
+    state: tauri::State<'_, crate::AppState>,
+    project_id: String,
+) -> Result<ProcessInfo, String> {
+    let (project_name, working_dir) = {
+        let projects = state.projects.lock().await;
+        let project = projects.get(&project_id).ok_or("Project not found")?;
+        (project.name.clone(), project.path.clone())
+    };
+
+    let process_id = Uuid::new_v4().to_string();
+
+    let info = state.process_manager.spawn_streaming(
+        app_handle.clone(),
+        process_id.clone(),
+        project_id,
+        project_name.clone(),
+        "PowerShell".to_string(),
+        "-".to_string(),
+        working_dir.clone(),
+        HashMap::new(),
+    ).await?;
+
+    // Set up UTF-8 encoding for the interactive session
+    let _ = state.process_manager.write_stdin(&process_id, UTF8_PREFIX.trim_end()).await;
+
+    // Friendly banner for the session
+    let _ = app_handle.emit("process-output", StreamMessage {
+        process_id: process_id.clone(),
+        project_name,
+        config_name: "PowerShell".to_string(),
+        output_type: "info".to_string(),
+        content: format!("▶ Sesión PowerShell iniciada en {}", working_dir.display()),
+        timestamp: chrono::Local::now().to_rfc3339(),
+    });
+
+    Ok(info)
+}
+
+/// Writes a command line to the stdin of a running process.
+#[command]
+pub async fn write_process_stdin(
+    state: tauri::State<'_, crate::AppState>,
+    process_id: String,
+    input: String,
+) -> Result<(), String> {
+    state.process_manager.write_stdin(&process_id, &input).await
 }
 
 #[command]

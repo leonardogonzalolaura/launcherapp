@@ -1,9 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
 import { Project } from '../types';
+import { BranchIcon } from './icons/BranchIcon';
 
 interface ProjectPaletteModalProps {
   project: Project;
+  currentBranch?: string | null;
+  refocusToken?: number;
   onSelectCommand: (configIndex: number) => void;
   onAction: (action: string) => void;
   onClose: () => void;
@@ -20,6 +23,8 @@ interface PaletteItem {
 
 export function ProjectPaletteModal({
   project,
+  currentBranch,
+  refocusToken = 0,
   onSelectCommand,
   onAction,
   onClose,
@@ -32,6 +37,17 @@ export function ProjectPaletteModal({
   const allItems = useMemo((): PaletteItem[] => {
     const items: PaletteItem[] = [];
 
+    // Primera opción: cambiar rama (muestra la rama actual)
+    items.push({
+      type: 'action',
+      label: 'Cambiar rama',
+      sublabel: currentBranch ? `Rama actual: ${currentBranch}` : 'Cambiar la rama del proyecto',
+      action: 'change-branch',
+      icon: 'branch',
+    });
+
+    items.push({ type: 'action', label: '', sublabel: '', action: 'separator', icon: '' });
+
     for (let i = 0; i < project.configurations.length; i++) {
       const config = project.configurations[i];
       items.push({
@@ -43,7 +59,7 @@ export function ProjectPaletteModal({
       });
     }
 
-    if (items.length > 0) {
+    if (project.configurations.length > 0) {
       items.push({ type: 'action', label: '', sublabel: '', action: 'separator', icon: '' });
     }
 
@@ -71,8 +87,16 @@ export function ProjectPaletteModal({
       icon: '📝',
     });
 
+    items.push({
+      type: 'action',
+      label: 'Open PowerShell',
+      sublabel: 'Abrir una sesión PowerShell embebida para este proyecto',
+      action: 'open-ps',
+      icon: '🖥️',
+    });
+
     return items;
-  }, [project]);
+  }, [project, currentBranch]);
 
   const filtered = useMemo(() => {
     const term = search.toLowerCase();
@@ -87,6 +111,10 @@ export function ProjectPaletteModal({
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [refocusToken]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -118,11 +146,12 @@ export function ProjectPaletteModal({
           } else if (item.action) {
             onAction(item.action);
           }
-          onClose();
+          if (item.action !== 'change-branch') onClose();
         }
         break;
       case 'Escape':
         e.preventDefault();
+        e.stopPropagation();
         onClose();
         break;
     }
@@ -178,7 +207,7 @@ export function ProjectPaletteModal({
                     } else if (item.action) {
                       onAction(item.action);
                     }
-                    onClose();
+                    if (item.action !== 'change-branch') onClose();
                   }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 text-left transition-colors"
                   style={{
@@ -187,7 +216,11 @@ export function ProjectPaletteModal({
                   }}
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
-                  <span className="text-base flex-shrink-0">{item.icon}</span>
+                  {item.icon === 'branch' ? (
+                    <BranchIcon size={14} className="flex-shrink-0" style={{ color: '#c084fc' }} />
+                  ) : (
+                    <span className="text-base flex-shrink-0">{item.icon}</span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{item.label}</div>
                     {item.sublabel && (

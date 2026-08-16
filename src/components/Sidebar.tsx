@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Plus, FolderOpen, ChevronDown, Play, Hammer,
   Trash2, Settings, PlusCircle, ChevronRight, ChevronLeft, Search, X,
-  Folder
+  Folder, Check, Loader2
 } from 'lucide-react';
 import { Project, ProjectConfig } from '../types';
 import { CommandButton } from './CommandButton';
+import { BranchIcon } from './icons/BranchIcon';
 
 interface SidebarProps {
   projects: Project[];
@@ -19,6 +20,9 @@ interface SidebarProps {
   onDeleteCommand: (configIndex: number) => void;
   onDuplicateCommand: (config: ProjectConfig, index: number) => void;
   onOpenCustomModal: (editingConfig: { config: ProjectConfig; index: number } | null) => void;
+  onOpenPowerShell: (projectId: string) => void;
+  onListBranches: (path: string) => Promise<string[]>;
+  onCheckoutBranch: (projectId: string, branch: string) => Promise<void>;
 }
 
 const getProjectIcon = (type: string) => {
@@ -82,10 +86,17 @@ export function Sidebar({
   onDeleteCommand,
   onDuplicateCommand,
   onOpenCustomModal,
+  onOpenPowerShell,
+  onListBranches,
+  onCheckoutBranch,
 }: SidebarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [projectSearchTerm, setProjectSearchTerm] = useState('');
+  const [branchMenuOpen, setBranchMenuOpen] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
+  const [branchError, setBranchError] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -101,6 +112,32 @@ export function Sidebar({
   const filteredProjects = projects.filter(p =>
     p.name.toLowerCase().includes(projectSearchTerm.toLowerCase())
   );
+
+  const loadBranches = async (path: string) => {
+    setBranchesLoading(true);
+    setBranchError(null);
+    try {
+      const list = await onListBranches(path);
+      setBranches(list);
+    } catch (e: any) {
+      setBranchError(typeof e === 'string' ? e : String(e));
+      setBranches([]);
+    } finally {
+      setBranchesLoading(false);
+    }
+  };
+
+  const toggleBranchMenu = async () => {
+    if (!selectedProject) return;
+    if (branchMenuOpen) {
+      setBranchMenuOpen(false);
+      return;
+    }
+    setBranchMenuOpen(true);
+    await loadBranches(selectedProject.path);
+  };
+
+  const currentBranch = selectedProject ? gitBranches[selectedProject.id] ?? null : null;
 
   // Group configurations by their `group` field
   const { groupedConfigs, ungroupedConfigs } = useMemo(() => {
@@ -251,17 +288,85 @@ export function Sidebar({
               )}
             </div>
 
-            {gitBranches[selectedProject.id] && (
-              <div className="mt-2">
-                <span
-                  className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded font-mono w-fit max-w-full truncate cursor-help"
+            {currentBranch && (
+              <div className="mt-2 relative">
+                <button
+                  onClick={toggleBranchMenu}
+                  className="flex items-center gap-1.5 text-xs px-1.5 py-1 rounded font-mono w-full max-w-full truncate transition-colors cursor-pointer"
                   style={{ backgroundColor: '#1e1529', color: '#c084fc', border: '1px solid #3b1f6a' }}
-                  title={gitBranches[selectedProject.id] || ''}
+                  onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#2a1c3f'; }}
+                  onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#1e1529'; }}
+                  title={`Rama actual: ${currentBranch} (clic para cambiar)`}
                 >
-                  🍃 {gitBranches[selectedProject.id]}
-                </span>
+                  <BranchIcon size={12} className="flex-shrink-0" />
+                  <span className="truncate">{currentBranch}</span>
+                  <ChevronDown size={11} className={`ml-auto flex-shrink-0 transition-transform ${branchMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {branchMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setBranchMenuOpen(false)} />
+                    <div className="absolute left-0 mt-1 w-full min-w-[180px] rounded-md shadow-xl z-20 overflow-hidden bg-surface border-standard">
+                      <div className="px-3 py-1.5 text-[10px] font-semibold uppercase text-muted" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        Cambiar rama
+                      </div>
+                      <div className="max-h-56 overflow-y-auto">
+                        {branchesLoading ? (
+                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted">
+                            <Loader2 size={12} className="animate-spin" /> Cargando ramas...
+                          </div>
+                        ) : branchError ? (
+                          <div className="px-3 py-2 text-xs" style={{ color: '#f87171' }}>
+                            {branchError}
+                          </div>
+                        ) : branches.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-muted">
+                            No hay ramas locales
+                          </div>
+                        ) : (
+                          branches.map(branch => {
+                            const isCurrent = branch === currentBranch;
+                            return (
+                              <button
+                                key={branch}
+                                onClick={() => {
+                                  if (isCurrent) { setBranchMenuOpen(false); return; }
+                                  setBranchMenuOpen(false);
+                                  onCheckoutBranch(selectedProject.id, branch);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left transition-colors"
+                                style={{
+                                  backgroundColor: isCurrent ? 'rgba(192,132,252,.12)' : 'transparent',
+                                  color: isCurrent ? '#c084fc' : 'var(--text-secondary)',
+                                }}
+                                onMouseEnter={e => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; }}
+                                onMouseLeave={e => { if (!isCurrent) e.currentTarget.style.backgroundColor = 'transparent'; }}
+                                title={isCurrent ? 'Rama actual' : `Cambiar a ${branch}`}
+                              >
+                                <BranchIcon size={12} className="flex-shrink-0 opacity-70" />
+                                <span className="truncate flex-1">{branch}</span>
+                                {isCurrent && <Check size={12} className="flex-shrink-0" />}
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             )}
+
+            <button
+              onClick={() => onOpenPowerShell(selectedProject.id)}
+              className="mt-2 w-full flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-xs font-medium"
+              style={{ backgroundColor: 'rgba(147,51,234,.12)', border: '1px solid rgba(147,51,234,.35)', color: '#c084fc' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = 'rgba(147,51,234,.22)'; }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'rgba(147,51,234,.12)'; }}
+              title="Abrir PowerShell embebido"
+            >
+              <span>&gt;_</span> PowerShell
+            </button>
           </div>
 
           {/* Grouped command sections */}
@@ -409,7 +514,7 @@ export function Sidebar({
               style={{ backgroundColor: '#1e1529', color: '#c084fc' }}
               title={gitBranches[selectedProject.id] || ''}
             >
-              🍃
+              <BranchIcon size={12} />
               <span className="absolute left-full ml-2 top-1/2 transform -translate-y-1/2 px-2 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 bg-elevated border-light" style={{ color: '#c084fc' }}>
                 {gitBranches[selectedProject.id]}
               </span>

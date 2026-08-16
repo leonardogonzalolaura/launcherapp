@@ -7,6 +7,7 @@ interface QuickSwitchModalProps {
   onSelect: (project: Project) => void;
   onExecuteCommand?: (projectId: string, configIndex: number) => void;
   onOpenEditor?: (project: Project) => void;
+  onOpenPowerShell?: (project: Project) => void;
   onClose: () => void;
 }
 
@@ -24,7 +25,7 @@ const getProjectIcon = (type: string) => {
   return icons[type] || '📁';
 };
 
-export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenEditor, onClose }: QuickSwitchModalProps) {
+export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenEditor, onOpenPowerShell, onClose }: QuickSwitchModalProps) {
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
           items.push({ type: 'command', project: p, configIndex: i, configName: c.name, configCommand: c.command });
         }
         items.push({ type: 'action', project: p, action: 'open-editor', configName: 'Open file editor', configCommand: 'Browse and edit project files' });
+        items.push({ type: 'action', project: p, action: 'open-ps', configName: 'Open PowerShell', configCommand: 'Embedded PowerShell session' });
       }
     }
     return items;
@@ -113,6 +115,9 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
           }
         } else if (item.action === 'open-editor') {
           onOpenEditor?.(item.project);
+          onClose();
+        } else if (item.action === 'open-ps') {
+          onOpenPowerShell?.(item.project);
           onClose();
         } else if (item.configIndex !== undefined) {
           onExecuteCommand?.(item.project.id, item.configIndex);
@@ -208,12 +213,17 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
               }
 
               const isEditorAction = item.action === 'open-editor';
+              const isPsAction = item.action === 'open-ps';
+              const isActionItem = isEditorAction || isPsAction;
               return (
                 <button
                   key={`${item.project.id}-${item.configIndex ?? item.action}`}
                   onClick={() => {
                     if (isEditorAction) {
                       onOpenEditor?.(item.project);
+                      onClose();
+                    } else if (isPsAction) {
+                      onOpenPowerShell?.(item.project);
                       onClose();
                     } else if (item.configIndex !== undefined) {
                       onExecuteCommand?.(item.project.id, item.configIndex);
@@ -228,8 +238,8 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
                   }}
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
-                  <span style={{ color: isEditorAction ? '#c084fc' : '#6e7fff', fontSize: '10px' }}>
-                    {isEditorAction ? '📝' : '▶'}
+                  <span style={{ color: isActionItem ? '#c084fc' : '#6e7fff', fontSize: '10px' }}>
+                    {isPsAction ? '🖥️' : isEditorAction ? '📝' : '▶'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{item.configName}</div>
@@ -240,11 +250,11 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
                   <span
                     className="text-[9px] px-1.5 py-0.5 rounded font-mono flex-shrink-0"
                     style={{
-                      backgroundColor: isEditorAction ? 'rgba(192,132,252,.15)' : 'rgba(110,127,255,.15)',
-                      color: isEditorAction ? '#c084fc' : '#6e7fff',
+                      backgroundColor: isActionItem ? 'rgba(192,132,252,.15)' : 'rgba(110,127,255,.15)',
+                      color: isActionItem ? '#c084fc' : '#6e7fff',
                     }}
                   >
-                    {isEditorAction ? 'Open' : 'Run'}
+                    {isActionItem ? 'Open' : 'Run'}
                   </span>
                 </button>
               );

@@ -12,6 +12,7 @@ import { useTauriCommands } from './hooks/useTauriCommands';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { CustomCommandModal } from './components/CustomCommandModal';
 import { ConsoleTab } from './components/ConsoleTab';
+import { PsConsole } from './components/PsConsole';
 import { Sidebar } from './components/Sidebar';
 import { ToastProvider, useToast } from './components/Toast';
 import { ConfirmModal } from './components/ConfirmModal';
@@ -21,6 +22,7 @@ import { QuickSwitchModal } from './components/QuickSwitchModal';
 import { ShortcutHelpModal } from './components/ShortcutHelpModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ProjectPaletteModal } from './components/ProjectPaletteModal';
+import { BranchPickerModal } from './components/BranchPickerModal';
 import { FileEditorModal } from './components/FileEditorModal';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 
@@ -83,6 +85,8 @@ function AppContent() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showProjectPalette, setShowProjectPalette] = useState(false);
+  const [showBranchPicker, setShowBranchPicker] = useState(false);
+  const [paletteRefocus, setPaletteRefocus] = useState(0);
   const [showFileEditor, setShowFileEditor] = useState(false);
   const [editorProject, setEditorProject] = useState<Project | null>(null);
   // Mapa projectId -> rama git actual (polling en vivo)
@@ -99,9 +103,10 @@ function AppContent() {
 
   const {
     getProjects, addProject, detectProject, removeProject, clearAllProjects,
-    spawnProjectCommand, stopProcess,
+    spawnProjectCommand, stopProcess, spawnPsShell, writeStdin,
     addCustomCommand, updateProjectConfig, deleteProjectConfig,
     onProcessOutput, onProcessExit, getGitBranch,
+    listGitBranches, checkoutGitBranch,
     watchGitBranch, unwatchGitBranch,
   } = useTauriCommands();
 
@@ -228,7 +233,7 @@ function AppContent() {
         setProcessTabs(prev => {
           const tab = prev.find(t => t.process_id === process_id);
           if (tab) {
-            if (!manuallyStoppedRef.current.has(process_id) && !notifiedRef.current.has(process_id)) {
+            if (tab.kind !== 'ps' && !manuallyStoppedRef.current.has(process_id) && !notifiedRef.current.has(process_id)) {
               notifiedRef.current.add(process_id);
               const success = exit_code === 0;
               const title = success ? '✅ Completed' : '❌ Failed';
@@ -323,6 +328,74 @@ const handleClearLogs = (processId: string) => {
   );
 };
   // ─── Execute ─────────────────────────────────────────────────────────────
+  // ─── Embedded PowerShell ───────────────────────────────────────────────────
+  const handleOpenPsShell = async (projectId: string) => {
+    // Solo una sesión por proyecto: si ya hay una activa, enfocarla
+    const existing = processTabs.find(t => t.kind === 'ps' && t.project_id === projectId);
+    if (existing && existing.status === 'running') {
+      setActiveTabId(existing.process_id);
+      return;
+    }
+
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    try {
+      const info = await spawnPsShell(projectId);
+      const branch = await getGitBranch(project.path).catch(() => null);
+      const newTab: ProcessTab = {
+        process_id: info.id,
+        project_id: project.id,
+        project_name: project.name,
+        config_name: 'PowerShell',
+        config_index: -1,
+        status: 'running',
+        logs: [],
+        started_at: info.started_at,
+        git_branch: branch,
+        project_type: project.project_type,
+        kind: 'ps',
+      };
+      if (existing) {
+        // Reemplazar la sesión detenida por una nueva
+        setProcessTabs(prev => prev.map(t => (t.process_id === existing.process_id ? newTab : t)));
+      } else {
+        setProcessTabs(prev => [...prev, newTab]);
+      }
+      setActiveTabId(info.id);
+    } catch (e: any) {
+      console.error(e);
+    }
+  };
+
+  // ─── Git branch switch ─────────────────────────────────────────────────────
+  const handleCheckoutBranch = async (projectId: string, branch: string) => {
+    try {
+      await checkoutGitBranch(projectId, branch);
+      addToast({ type: 'success', message: `Rama cambiada a "${branch}"` });
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+        try {
+          const b = await getGitBranch(project.path);
+          setGitBranches(prev => ({ ...prev, [projectId]: b }));
+        } catch {}
+      }
+    } catch (e: any) {
+      const msg = typeof e === 'string' ? e : e?.message || String(e);
+      addToast({ type: 'error', message: `No se pudo cambiar a "${branch}": ${msg}` });
+    }
+  };
+
+  const handleEchoLog = (processId: string, content: string) => {
+    setProcessTabs(prev =>
+      prev.map(tab =>
+        tab.process_id === processId
+          ? { ...tab, logs: [...tab.logs, { id: newLogId(), output_type: 'info' as const, content, timestamp: new Date().toISOString() }].slice(-MAX_LOG_LINES) }
+          : tab
+      )
+    );
+  };
+
   const handleExecute = async (configIndex: number) => {
     if (!selectedProject) return;
     const config = selectedProject.configurations[configIndex];
@@ -355,6 +428,7 @@ const handleClearLogs = (processId: string) => {
   const handleRerun = async (processId: string) => {
     const tabToRerun = processTabs.find(t => t.process_id === processId);
     if (!tabToRerun) return;
+    if (tabToRerun.kind === 'ps') return;
 
     try {
       const project = projects.find(p => p.id === tabToRerun.project_id);
@@ -551,6 +625,14 @@ const handleClearLogs = (processId: string) => {
       case 'open-file-editor':
         setShowFileEditor(true);
         break;
+      case 'open-ps':
+        if (contextProject) {
+          handleOpenPsShell(contextProject.id);
+        }
+        break;
+      case 'change-branch':
+        setShowBranchPicker(true);
+        break;
     }
   };
 
@@ -612,7 +694,7 @@ const handleClearLogs = (processId: string) => {
     }
   };
 
-  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette || showFileEditor;
+  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette || showBranchPicker || showFileEditor;
 
   useKeyboardShortcuts([
     {
@@ -661,6 +743,7 @@ const handleClearLogs = (processId: string) => {
         if (showCommandPalette) setShowCommandPalette(false);
         else if (showShortcutHelp) setShowShortcutHelp(false);
         else if (showQuickSwitch) setShowQuickSwitch(false);
+        else if (showBranchPicker) setShowBranchPicker(false);
         else if (showProjectPalette) setShowProjectPalette(false);
         else if (showFileEditor) setShowFileEditor(false);
         else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
@@ -703,11 +786,30 @@ const handleClearLogs = (processId: string) => {
           setEditingConfig(editingConfig);
           setShowCustomModal(true);
         }}
+        onOpenPowerShell={handleOpenPsShell}
+        onListBranches={listGitBranches}
+        onCheckoutBranch={handleCheckoutBranch}
       />
 
         {/* Console Area */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {activeTab ? (
+          {activeTab && activeTab.kind === 'ps' ? (
+            <PsConsole
+              key={activeTab.process_id}
+              tab={activeTab}
+              onStop={handleStop}
+              onClose={handleCloseTab}
+              onClear={handleClearLogs}
+              onEcho={handleEchoLog}
+              onSend={writeStdin}
+              tabPosition={tabPosition}
+              allTabs={processTabs}
+              activeTabId={activeTabId}
+              onSelectTab={setActiveTabId}
+              onCloseTab={handleCloseTab}
+              gitBranches={gitBranches}
+            />
+          ) : activeTab ? (
             <ConsoleTab
               key={activeTab.process_id}
               tab={activeTab}
@@ -754,6 +856,16 @@ const handleClearLogs = (processId: string) => {
                     title="Open file editor (Ctrl+Shift+E)"
                   >
                     📝 Editor
+                  </button>
+                  <button
+                    onClick={() => handleOpenPsShell(selectedProject.id)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
+                    style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
+                    onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; e.currentTarget.style.color = '#e2e4f0'; }}
+                    onMouseLeave={e => { e.currentTarget.style.backgroundColor = 'var(--bg-surface)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+                    title="Open embedded PowerShell"
+                  >
+                    <span style={{ color: '#c084fc' }}>&gt;_</span> PowerShell
                   </button>
                 </div>
               )}
@@ -803,6 +915,11 @@ const handleClearLogs = (processId: string) => {
             setShowFileEditor(true);
             setShowQuickSwitch(false);
           }}
+          onOpenPowerShell={(project) => {
+            setSelectedProject(project);
+            setShowQuickSwitch(false);
+            handleOpenPsShell(project.id);
+          }}
           onClose={() => setShowQuickSwitch(false)}
         />
       )}
@@ -828,9 +945,22 @@ const handleClearLogs = (processId: string) => {
       {showProjectPalette && contextProject && (
         <ProjectPaletteModal
           project={contextProject}
+          currentBranch={gitBranches[contextProject.id] ?? null}
+          refocusToken={paletteRefocus}
           onSelectCommand={handleProjectPaletteSelect}
           onAction={handleProjectPaletteAction}
           onClose={() => setShowProjectPalette(false)}
+        />
+      )}
+
+      {/* Branch Picker Modal (desde Ctrl+Shift+O) */}
+      {showBranchPicker && contextProject && (
+        <BranchPickerModal
+          project={contextProject}
+          currentBranch={gitBranches[contextProject.id] ?? null}
+          onListBranches={listGitBranches}
+          onCheckoutBranch={handleCheckoutBranch}
+          onClose={() => { setShowBranchPicker(false); setPaletteRefocus(n => n + 1); }}
         />
       )}
 

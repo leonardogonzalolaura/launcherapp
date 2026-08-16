@@ -42,6 +42,72 @@ pub async fn get_git_branch(path: String) -> Result<Option<String>, String> {
     }
 }
 
+/// Lista las ramas locales del proyecto (sin la rama actual, que el frontend ya conoce).
+#[command]
+pub async fn list_git_branches(path: String) -> Result<Vec<String>, String> {
+    let output = create_git_command()
+        .args(["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
+        .current_dir(&path)
+        .output()
+        .map_err(|e| format!("Failed to run git: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            "git could not list branches".to_string()
+        } else {
+            stderr
+        });
+    }
+
+    let branches: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    Ok(branches)
+}
+
+/// Cambia a otra rama local del proyecto. Devuelve el stderr de git en caso de error.
+#[command]
+pub async fn checkout_git_branch(
+    state: tauri::State<'_, AppState>,
+    app_handle: tauri::AppHandle,
+    project_id: String,
+    branch: String,
+) -> Result<(), String> {
+    let project_path = {
+        let projects = state.projects.lock().await;
+        let project = projects.get(&project_id).ok_or("Project not found")?;
+        project.path.clone()
+    };
+
+    let output = create_git_command()
+        .args(["checkout"])
+        .arg(&branch)
+        .current_dir(&project_path)
+        .output()
+        .map_err(|e| format!("Failed to run git: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("Could not switch to branch {}", branch)
+        } else {
+            stderr
+        });
+    }
+
+    // Notificar al frontend para refrescar la rama en vivo
+    let _ = app_handle.emit("git-branch-changed", serde_json::json!({
+        "project_id": project_id,
+        "project_path": project_path,
+    }));
+
+    Ok(())
+}
+
 #[command]
 pub async fn add_project(
     state: tauri::State<'_, AppState>,

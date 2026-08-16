@@ -65,12 +65,28 @@ export const useTauriCommands = () => {
     return await invoke('stop_process', { processId });
   };
 
+  const spawnPsShell = async (projectId: string): Promise<ProcessInfo> => {
+    return await invoke('spawn_ps_shell', { projectId });
+  };
+
+  const writeStdin = async (processId: string, input: string): Promise<void> => {
+    return await invoke('write_process_stdin', { processId, input });
+  };
+
   const getActiveProcesses = async (): Promise<ProcessInfo[]> => {
     return await invoke('get_active_processes');
   };
 
   const getGitBranch = async (path: string): Promise<string | null> => {
     return await invoke('get_git_branch', { path });
+  };
+
+  const listGitBranches = async (path: string): Promise<string[]> => {
+    return await invoke('list_git_branches', { path });
+  };
+
+  const checkoutGitBranch = async (projectId: string, branch: string): Promise<void> => {
+    return await invoke('checkout_git_branch', { projectId, branch });
   };
 
   const watchGitBranch = async (projectId: string, projectPath: string): Promise<boolean> => {
@@ -109,8 +125,12 @@ export const useTauriCommands = () => {
     detectProject,
     spawnProjectCommand,
     stopProcess,
+    spawnPsShell,
+    writeStdin,
     getActiveProcesses,
     getGitBranch,
+    listGitBranches,
+    checkoutGitBranch,
     watchGitBranch,
     unwatchGitBranch,
     onProcessOutput,

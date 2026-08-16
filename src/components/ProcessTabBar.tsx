@@ -1,5 +1,6 @@
 import { X } from 'lucide-react';
 import { ProcessTab } from '../types';
+import { BranchIcon } from './icons/BranchIcon';
 
 interface ProcessTabBarProps {
   tabs: ProcessTab[];
@@ -32,7 +33,13 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
             <span className={tab.status === 'running' ? 'animate-pulse-dot' : ''} style={{ color: statusColor, fontSize: '10px', lineHeight: 1 }}>●</span>
             <span className="font-medium max-w-[100px] truncate">{tab.project_name}</span>
             <span style={{ color: '#4a4a70' }}>·</span>
-            <span className="text-[10px] truncate max-w-[80px]">{tab.config_name}</span>
+            {tab.kind === 'ps' ? (
+              <span className="flex items-center gap-1 text-[10px]" style={{ color: '#c084fc' }}>
+                <span>&gt;_</span> PowerShell
+              </span>
+            ) : (
+              <span className="text-[10px] truncate max-w-[80px]">{tab.config_name}</span>
+            )}
             {tab.config_group && (
               <span className="text-[9px] px-1 py-0.5 rounded" style={{ backgroundColor: '#1e1e38', color: '#555878' }}>
                 {tab.config_group}
@@ -41,7 +48,7 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
             <span style={{ color: '#4a4a70' }}>·</span>
             {(gitBranches[tab.project_id] ?? tab.git_branch) && (
               <span className="flex items-center gap-0.5" style={{ color: '#a78bfa', fontSize: '10px' }}>
-                ⎇ {gitBranches[tab.project_id] ?? tab.git_branch}
+                <BranchIcon size={10} /> {gitBranches[tab.project_id] ?? tab.git_branch}
               </span>
             )}
             <span

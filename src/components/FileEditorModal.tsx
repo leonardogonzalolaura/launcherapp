@@ -4,6 +4,7 @@ import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
 import { EditorTabs } from './EditorTabs';
+import { BranchIcon } from './icons/BranchIcon';
 
 interface OpenFile {
   path: string;
@@ -213,8 +214,8 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
                 <span className="text-[10px]" style={{ color: '#555878' }}>·</span>
                 <span className="text-[11px] font-medium text-secondary">{projectName}</span>
                 {gitBranch && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-                    {gitBranch}
+                  <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+                    <BranchIcon size={10} /> {gitBranch}
                   </span>
                 )}
               </>
