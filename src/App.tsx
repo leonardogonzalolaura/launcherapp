@@ -86,7 +86,9 @@ function AppContent() {
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showProjectPalette, setShowProjectPalette] = useState(false);
   const [showBranchPicker, setShowBranchPicker] = useState(false);
+  const [branchPickerProject, setBranchPickerProject] = useState<Project | null>(null);
   const [paletteRefocus, setPaletteRefocus] = useState(0);
+  const [quickSwitchRefocus, setQuickSwitchRefocus] = useState(0);
   const [showFileEditor, setShowFileEditor] = useState(false);
   const [editorProject, setEditorProject] = useState<Project | null>(null);
   // Mapa projectId -> rama git actual (polling en vivo)
@@ -631,9 +633,31 @@ const handleClearLogs = (processId: string) => {
         }
         break;
       case 'change-branch':
-        setShowBranchPicker(true);
+        if (contextProject) {
+          setBranchPickerProject(contextProject);
+          setShowBranchPicker(true);
+        }
         break;
     }
+  };
+
+  const handleQuickSwitchChangeBranch = (project: Project) => {
+    setBranchPickerProject(project);
+    setShowBranchPicker(true);
+  };
+
+  const openQuickSwitch = () => {
+    setShowQuickSwitch(true);
+    projects.forEach(p => {
+      getGitBranch(p.path)
+        .then(branch => {
+          setGitBranches(prev => {
+            if (prev[p.id] === branch) return prev;
+            return { ...prev, [p.id]: branch };
+          });
+        })
+        .catch(() => {});
+    });
   };
 
   const handleProjectPaletteSelect = async (configIndex: number) => {
@@ -699,7 +723,7 @@ const handleClearLogs = (processId: string) => {
   useKeyboardShortcuts([
     {
       key: 'p', ctrl: true, label: 'Quick switch project', category: 'Global',
-      handler: () => setShowQuickSwitch(true),
+      handler: () => openQuickSwitch(),
     },
     {
       key: 'p', ctrl: true, shift: true, label: 'Command palette', category: 'Global',
@@ -742,8 +766,8 @@ const handleClearLogs = (processId: string) => {
       handler: () => {
         if (showCommandPalette) setShowCommandPalette(false);
         else if (showShortcutHelp) setShowShortcutHelp(false);
-        else if (showQuickSwitch) setShowQuickSwitch(false);
         else if (showBranchPicker) setShowBranchPicker(false);
+        else if (showQuickSwitch) setShowQuickSwitch(false);
         else if (showProjectPalette) setShowProjectPalette(false);
         else if (showFileEditor) setShowFileEditor(false);
         else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
@@ -920,6 +944,9 @@ const handleClearLogs = (processId: string) => {
             setShowQuickSwitch(false);
             handleOpenPsShell(project.id);
           }}
+          onChangeBranch={handleQuickSwitchChangeBranch}
+          getBranch={(projectId) => gitBranches[projectId] ?? null}
+          refocusToken={quickSwitchRefocus}
           onClose={() => setShowQuickSwitch(false)}
         />
       )}
@@ -953,14 +980,19 @@ const handleClearLogs = (processId: string) => {
         />
       )}
 
-      {/* Branch Picker Modal (desde Ctrl+Shift+O) */}
-      {showBranchPicker && contextProject && (
+      {/* Branch Picker Modal (desde Ctrl+Shift+O o Ctrl+P) */}
+      {showBranchPicker && branchPickerProject && (
         <BranchPickerModal
-          project={contextProject}
-          currentBranch={gitBranches[contextProject.id] ?? null}
+          project={branchPickerProject}
+          currentBranch={gitBranches[branchPickerProject.id] ?? null}
           onListBranches={listGitBranches}
           onCheckoutBranch={handleCheckoutBranch}
-          onClose={() => { setShowBranchPicker(false); setPaletteRefocus(n => n + 1); }}
+          onClose={() => {
+            setShowBranchPicker(false);
+            setBranchPickerProject(null);
+            setPaletteRefocus(n => n + 1);
+            setQuickSwitchRefocus(n => n + 1);
+          }}
         />
       )}
 

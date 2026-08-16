@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, X, ChevronRight, ChevronDown } from 'lucide-react';
 import { Project } from '../types';
+import { HomeIcon } from './icons/HomeIcon';
+import { BranchIcon } from './icons/BranchIcon';
 
 interface QuickSwitchModalProps {
   projects: Project[];
@@ -8,6 +10,9 @@ interface QuickSwitchModalProps {
   onExecuteCommand?: (projectId: string, configIndex: number) => void;
   onOpenEditor?: (project: Project) => void;
   onOpenPowerShell?: (project: Project) => void;
+  onChangeBranch?: (project: Project) => void;
+  getBranch?: (projectId: string) => string | null;
+  refocusToken?: number;
   onClose: () => void;
 }
 
@@ -25,7 +30,7 @@ const getProjectIcon = (type: string) => {
   return icons[type] || '📁';
 };
 
-export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenEditor, onOpenPowerShell, onClose }: QuickSwitchModalProps) {
+export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenEditor, onOpenPowerShell, onChangeBranch, getBranch, refocusToken = 0, onClose }: QuickSwitchModalProps) {
   const [search, setSearch] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [expandedProjectId, setExpandedProjectId] = useState<string | null>(null);
@@ -42,12 +47,14 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
     for (const p of filtered) {
       items.push({ type: 'project', project: p });
       if (expandedProjectId === p.id) {
+        items.push({ type: 'action', project: p, action: 'open-editor', configName: 'Open file editor', configCommand: 'Browse and edit project files' });
+        items.push({ type: 'action', project: p, action: 'open-ps', configName: 'Open PowerShell', configCommand: 'Embedded PowerShell session' });
+        items.push({ type: 'action', project: p, action: 'change-branch', configName: 'Cambiar rama', configCommand: getBranch?.(p.id) ? `Rama actual: ${getBranch(p.id)}` : 'Cambiar la rama del proyecto' });
+        items.push({ type: 'action', project: p, action: 'select-project', configName: 'Mover al proyecto', configCommand: 'Seleccionar este proyecto sin ejecutar nada' });
         for (let i = 0; i < p.configurations.length; i++) {
           const c = p.configurations[i];
           items.push({ type: 'command', project: p, configIndex: i, configName: c.name, configCommand: c.command });
         }
-        items.push({ type: 'action', project: p, action: 'open-editor', configName: 'Open file editor', configCommand: 'Browse and edit project files' });
-        items.push({ type: 'action', project: p, action: 'open-ps', configName: 'Open PowerShell', configCommand: 'Embedded PowerShell session' });
       }
     }
     return items;
@@ -56,6 +63,10 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [refocusToken]);
 
   useEffect(() => {
     setSelectedIndex(0);
@@ -113,6 +124,11 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
           } else {
             setExpandedProjectId(item.project.id);
           }
+        } else if (item.action === 'select-project') {
+          onSelect(item.project);
+          onClose();
+        } else if (item.action === 'change-branch') {
+          onChangeBranch?.(item.project);
         } else if (item.action === 'open-editor') {
           onOpenEditor?.(item.project);
           onClose();
@@ -126,6 +142,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
         break;
       case 'Escape':
         e.preventDefault();
+        e.stopPropagation();
         onClose();
         break;
     }
@@ -138,7 +155,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-xl overflow-hidden shadow-2xl bg-surface border-light"
+        className="w-full max-w-2xl rounded-xl overflow-hidden shadow-2xl bg-surface border-light"
         onClick={e => e.stopPropagation()}
         onKeyDown={handleKeyDown}
       >
@@ -198,28 +215,43 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
                     <span className="text-lg flex-shrink-0">{getProjectIcon(item.project.project_type)}</span>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{item.project.name}</div>
-                      <div className="text-[11px] truncate" style={{ color: '#555878' }}>
+<div className="text-[11px] truncate max-w-[45%]" style={{ color: '#555878' }}>
                         {isExpanded ? `${item.project.configurations.length} commands` : item.project.path}
                       </div>
                     </div>
-                    <span
-                      className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
-                      style={{ backgroundColor: '#1a1a2e', color: '#6e7fff' }}
-                    >
-                      {item.project.project_type}
-                    </span>
+                    {(() => {
+                      const branch = getBranch?.(item.project.id) ?? null;
+                      if (!branch) return null;
+                      return (
+                        <span
+                          className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 max-w-[260px] truncate"
+                          style={{ backgroundColor: 'rgba(192,132,252,.15)', color: '#c084fc' }}
+                          title={branch}
+                        >
+                          <BranchIcon size={11} />
+                          <span className="truncate">{branch}</span>
+                        </span>
+                      );
+                    })()}
                   </button>
                 );
               }
 
+              const isBranchAction = item.action === 'change-branch';
+              const isSelectAction = item.action === 'select-project';
               const isEditorAction = item.action === 'open-editor';
               const isPsAction = item.action === 'open-ps';
-              const isActionItem = isEditorAction || isPsAction;
+              const isActionItem = isBranchAction || isSelectAction || isEditorAction || isPsAction;
               return (
                 <button
                   key={`${item.project.id}-${item.configIndex ?? item.action}`}
                   onClick={() => {
-                    if (isEditorAction) {
+                    if (isBranchAction) {
+                      onChangeBranch?.(item.project);
+                    } else if (isSelectAction) {
+                      onSelect(item.project);
+                      onClose();
+                    } else if (isEditorAction) {
                       onOpenEditor?.(item.project);
                       onClose();
                     } else if (isPsAction) {
@@ -238,8 +270,8 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
                   }}
                   onMouseEnter={() => setSelectedIndex(i)}
                 >
-                  <span style={{ color: isActionItem ? '#c084fc' : '#6e7fff', fontSize: '10px' }}>
-                    {isPsAction ? '🖥️' : isEditorAction ? '📝' : '▶'}
+                  <span style={{ color: isActionItem ? '#c084fc' : '#6e7fff', fontSize: '10px', display: 'inline-flex', alignItems: 'center' }}>
+                    {isPsAction ? '🖥️' : isEditorAction ? '📝' : isBranchAction ? <BranchIcon size={13} /> : isSelectAction ? <HomeIcon size={13} /> : '▶'}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm truncate">{item.configName}</div>
@@ -254,7 +286,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
                       color: isActionItem ? '#c084fc' : '#6e7fff',
                     }}
                   >
-                    {isActionItem ? 'Open' : 'Run'}
+                    {isBranchAction ? 'Cambiar' : isSelectAction ? 'Ir' : isActionItem ? 'Open' : 'Run'}
                   </span>
                 </button>
               );
@@ -270,7 +302,7 @@ export function QuickSwitchModal({ projects, onSelect, onExecuteCommand, onOpenE
             <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>→</kbd> Expandir
           </span>
           <span className="text-[10px] text-muted">
-            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>Enter</kbd> Ejecutar
+            <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>Enter</kbd> Seleccionar
           </span>
           <span className="text-[10px] text-muted">
             <kbd className="bg-elevated border-light" style={{ padding: '1px 4px', borderRadius: 3 }}>Esc</kbd> Cerrar
