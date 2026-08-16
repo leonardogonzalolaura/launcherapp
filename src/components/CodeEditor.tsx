@@ -13,6 +13,7 @@ import { java } from '@codemirror/lang-java';
 import { csharp } from '@replit/codemirror-lang-csharp';
 import type { Parser } from '@lezer/common';
 import { isNavLanguage, tokenAt, getImportInfo, findDefinitionLine, resolveImport, findFileByTypeName, hasCachedFile, memberReceiverName, findMethodTarget } from '../util/editorNav';
+import { editorThemeExtensions, type EditorTheme } from '../util/editorThemes';
 
 interface CodeEditorProps {
   content: string;
@@ -20,6 +21,7 @@ interface CodeEditorProps {
   projectPath: string;
   filePath: string;
   initialLine?: number;
+  editorTheme?: EditorTheme;
   onChange: (content: string) => void;
   onSave: () => void;
   onOpenFile: (path: string, line?: number) => void;
@@ -258,6 +260,7 @@ function getExtensions(
   onChange: (c: string) => void,
   onEditorUpdate: (view: EditorView) => void,
   nav?: NavContext,
+  editorTheme?: EditorTheme,
 ) {
   const ext: any[] = [
     basicSetup,
@@ -336,6 +339,8 @@ function getExtensions(
     }
   }));
 
+  ext.push(...editorThemeExtensions(editorTheme ?? 'auto'));
+
   return ext;
 }
 
@@ -378,7 +383,7 @@ function findHighlightExtension() {
   });
 }
 
-export function CodeEditor({ content, language, projectPath, filePath, initialLine, onChange, onSave, onOpenFile, onConsumedNav }: CodeEditorProps) {
+export function CodeEditor({ content, language, projectPath, filePath, initialLine, editorTheme, onChange, onSave, onOpenFile, onConsumedNav }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
@@ -509,6 +514,7 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
         (c: string) => onChangeRef.current(c),
         (view: EditorView) => { if (findOpenRef.current) updateMatchInfo(view); },
         { projectPath, filePath, parser: getLanguageParser(language)!, onOpenFile: (path, line) => onOpenFileRef.current(path, line) },
+        editorTheme,
       ),
     });
 
@@ -519,7 +525,21 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
       view.destroy();
       viewRef.current = null;
     };
-  }, [language, updateMatchInfo, projectPath, filePath]);
+  }, [language, updateMatchInfo, projectPath, filePath, editorTheme]);
+
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || !editorTheme) return;
+    const ext = getExtensions(
+      language,
+      () => onSaveRef.current(),
+      (c: string) => onChangeRef.current(c),
+      (v: EditorView) => { if (findOpenRef.current) updateMatchInfo(v); },
+      { projectPath, filePath, parser: getLanguageParser(language)!, onOpenFile: (path, line) => onOpenFileRef.current(path, line) },
+      editorTheme,
+    );
+    view.dispatch({ effects: StateEffect.reconfigure.of(ext) });
+  }, [editorTheme, language, projectPath, filePath, updateMatchInfo]);
 
   useEffect(() => {
     const view = viewRef.current;

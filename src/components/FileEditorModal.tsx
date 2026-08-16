@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2 } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Palette, Check } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
 import { EditorTabs } from './EditorTabs';
 import { BranchIcon } from './icons/BranchIcon';
+import { EDITOR_THEMES, getGlobalEditorTheme, type EditorTheme } from '../util/editorThemes';
 
 interface OpenFile {
   path: string;
@@ -18,6 +19,7 @@ interface FileEditorModalProps {
   projectPath: string;
   projectName?: string;
   gitBranch?: string | null;
+  defaultEditorTheme?: EditorTheme;
   onClose: () => void;
 }
 
@@ -38,12 +40,54 @@ function getFileName(path: string): string {
   return path.split(/[\\/]/).pop() || path;
 }
 
-export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }: FileEditorModalProps) {
+interface ThemeMenuProps {
+  editorTheme: EditorTheme;
+  open: boolean;
+  onToggle: () => void;
+  onSelect: (t: EditorTheme) => void;
+}
+
+function ThemeMenu({ editorTheme, open, onToggle, onSelect }: ThemeMenuProps) {
+  return (
+    <div className="relative">
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(); }}
+        className="flex items-center gap-1.5 px-1.5 py-1 rounded hover:bg-hover transition-colors text-secondary"
+        title="Tema del editor"
+      >
+        <Palette size={14} />
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 z-50 rounded-lg shadow-2xl min-w-[190px] py-1 top-full mt-1"
+          style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {EDITOR_THEMES.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => onSelect(opt.id)}
+              className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors hover:bg-hover"
+              style={{ color: opt.id === editorTheme ? 'var(--accent)' : 'var(--text-primary)' }}
+            >
+              <span>{opt.label}</span>
+              {opt.id === editorTheme && <Check size={12} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEditorTheme, onClose }: FileEditorModalProps) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [confirmClose, setConfirmClose] = useState<boolean>(false);
   const [explorerCollapsed, setExplorerCollapsed] = useState<boolean>(false);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [editorTheme, setEditorTheme] = useState<EditorTheme>(() => defaultEditorTheme ?? getGlobalEditorTheme());
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(220);
   const [jumpTo, setJumpTo] = useState<{ path: string; line: number } | null>(null);
   const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
@@ -191,6 +235,23 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
     return () => window.removeEventListener('keydown', handler);
   }, [handleModalClose, confirmClose, saveFile]);
 
+  useEffect(() => {
+    if (!themeMenuOpen) return;
+    const close = () => setThemeMenuOpen(false);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [themeMenuOpen]);
+
+  const handleThemeSelect = useCallback((t: EditorTheme) => {
+    setEditorTheme(t);
+    setThemeMenuOpen(false);
+  }, []);
+
+  const handleHeaderDoubleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    setIsMaximized(prev => !prev);
+  }, []);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -206,7 +267,12 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
         }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-color)' }}>
+        <div
+          className="flex items-center justify-between px-4 py-2 flex-shrink-0 select-none"
+          style={{ borderBottom: '1px solid var(--border-color)', cursor: isMaximized ? 'default' : 'grab' }}
+          onDoubleClick={handleHeaderDoubleClick}
+          title={isMaximized ? 'Doble clic para restaurar' : 'Doble clic para maximizar'}
+        >
           <div className="flex items-center gap-2">
             <button
               onClick={() => setExplorerCollapsed(prev => !prev)}
@@ -221,8 +287,9 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
                 <span className="text-[10px]" style={{ color: '#555878' }}>·</span>
                 <span className="text-[11px] font-medium text-secondary">{projectName}</span>
                 {gitBranch && (
-                  <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-mono" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-                    <BranchIcon size={10} /> {gitBranch}
+                  <span className="flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-md font-mono" style={{ backgroundColor: 'var(--branch-bg)', color: 'var(--branch-fg)', border: '1px solid var(--branch-border)' }}>
+                    <BranchIcon size={10} />
+                    {gitBranch}
                   </span>
                 )}
               </>
@@ -241,6 +308,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
                 </button>
               </>
             )}
+                        <ThemeMenu editorTheme={editorTheme} open={themeMenuOpen} onToggle={() => setThemeMenuOpen(prev => !prev)} onSelect={handleThemeSelect} />
             <button
               onClick={() => setIsMaximized(prev => !prev)}
               className="p-1 rounded hover:bg-hover transition-colors text-muted"
@@ -302,6 +370,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
                 projectPath={projectPath}
                 filePath={activeFile.path}
                 initialLine={jumpTo && jumpTo.path === activeFile.path ? jumpTo.line : undefined}
+                editorTheme={editorTheme}
                 onChange={editContent}
                 onSave={saveFile}
                 onOpenFile={handleOpenForNav}
@@ -325,7 +394,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, onClose }
           {activeFile && (
             <span className="text-[10px] text-muted">{activeFile.path}</span>
           )}
-          <span className="text-[10px] text-muted ml-auto">
+          <span className="text-[10px] text-muted ml-auto flex items-center gap-3">
             <kbd className="bg-elevated border-light px-1 py-0.5 rounded">Ctrl+S</kbd> Save
           </span>
         </div>

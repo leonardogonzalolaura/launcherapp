@@ -16,6 +16,10 @@
   --text-secondary: #555878;
   --text-muted: #8890b0;
   --text-console: #3a3a50;
+  --accent: #6e7fff;
+  --branch-bg: rgba(31, 136, 61, 0.1);
+  --branch-fg: #1a7f37;
+  --branch-border: rgba(31, 136, 61, 0.28);
 }
 
 .dark {
@@ -43,6 +47,10 @@
   --text-primary: #e2e4f0;
   --text-secondary: #8890b0;
   --text-muted: #555878;
+  --accent: #6e7fff;
+  --branch-bg: rgba(63, 185, 80, 0.14);
+  --branch-fg: #3fb950;
+  --branch-border: rgba(63, 185, 80, 0.35);
 }
 
 @layer base {

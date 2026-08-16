@@ -5,7 +5,7 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import {
   Plus, Terminal,
   Trash2, ChevronRight, Loader2, MoreHorizontal,
-  Folder, Monitor, Sun, Moon, Keyboard
+  Folder, Monitor, Sun, Moon, Keyboard, Palette, Check, ChevronDown
 } from 'lucide-react';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
@@ -25,6 +25,7 @@ import { ProjectPaletteModal } from './components/ProjectPaletteModal';
 import { BranchPickerModal } from './components/BranchPickerModal';
 import { FileEditorModal } from './components/FileEditorModal';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
+import { EDITOR_THEMES, getGlobalEditorTheme, setGlobalEditorTheme, type EditorTheme } from './util/editorThemes';
 
 let logIdCounter = 0;
 const newLogId = () => `log-${++logIdCounter}`;
@@ -91,6 +92,8 @@ function AppContent() {
   const [quickSwitchRefocus, setQuickSwitchRefocus] = useState(0);
   const [showFileEditor, setShowFileEditor] = useState(false);
   const [editorProject, setEditorProject] = useState<Project | null>(null);
+  const [globalEditorTheme, setGlobalEditorThemeState] = useState<EditorTheme>(() => getGlobalEditorTheme());
+  const [showGlobalThemeMenu, setShowGlobalThemeMenu] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
   const [gitBranches, setGitBranches] = useState<Record<string, string | null>>({});
   const [tabPosition, setTabPosition] = useState<'top' | 'bottom'>(() => {
@@ -564,6 +567,12 @@ const handleClearLogs = (processId: string) => {
     }
   };
 
+  const handleSelectGlobalTheme = (t: EditorTheme) => {
+    setGlobalEditorTheme(t);
+    setGlobalEditorThemeState(t);
+    setShowGlobalThemeMenu(false);
+  };
+
   const handleClearAllProjects = async () => {
     if (!window.confirm("¿Estás seguro de que deseas quitar todos los proyectos registrados?")) {
       return;
@@ -1002,6 +1011,7 @@ const handleClearLogs = (processId: string) => {
           projectPath={editorTarget.path}
           projectName={editorTarget.name}
           gitBranch={gitBranches[editorTarget.id]}
+          defaultEditorTheme={globalEditorTheme}
           onClose={() => { setShowFileEditor(false); setEditorProject(null); }}
         />
       )}
@@ -1039,6 +1049,40 @@ const handleClearLogs = (processId: string) => {
           >
             <Keyboard size={13} />
           </button>
+
+          {/* Editor theme global */}
+          <div className="relative">
+            <button
+              onClick={() => setShowGlobalThemeMenu(prev => !prev)}
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded hover:bg-hover transition-colors text-[10px] font-medium text-muted"
+              title="Tema del editor (global)"
+            >
+              <Palette size={12} />
+              <span>{EDITOR_THEMES.find(t => t.id === globalEditorTheme)?.label}</span>
+              <ChevronDown size={10} />
+            </button>
+            {showGlobalThemeMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowGlobalThemeMenu(false)} />
+                <div
+                  className="absolute bottom-full right-0 mb-1 w-52 rounded-md shadow-xl z-20 overflow-hidden py-1"
+                  style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+                >
+                  {EDITOR_THEMES.map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => handleSelectGlobalTheme(opt.id)}
+                      className="w-full flex items-center justify-between px-3 py-1.5 text-[11px] transition-colors hover:bg-hover"
+                      style={{ color: opt.id === globalEditorTheme ? 'var(--accent)' : 'var(--text-primary)' }}
+                    >
+                      <span>{opt.label}</span>
+                      {opt.id === globalEditorTheme && <Check size={12} />}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Theme toggle */}
           <button
