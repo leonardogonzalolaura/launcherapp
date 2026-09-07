@@ -717,6 +717,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           minimizedEditors={minimizedEditors}
           onRestoreEditor={onRestoreEditor}
           onCloseEditor={onCloseEditor}
+          position="top"
         />
       )}
 
@@ -809,6 +810,7 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           minimizedEditors={minimizedEditors}
           onRestoreEditor={onRestoreEditor}
           onCloseEditor={onCloseEditor}
+          position="bottom"
         />
       )}
     </div>

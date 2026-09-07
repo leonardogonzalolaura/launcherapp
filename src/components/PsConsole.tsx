@@ -151,6 +151,7 @@ export function PsConsole({
           minimizedEditors={minimizedEditors}
           onRestoreEditor={onRestoreEditor}
           onCloseEditor={onCloseEditor}
+          position="top"
         />
       )}
 
@@ -236,6 +237,7 @@ export function PsConsole({
           minimizedEditors={minimizedEditors}
           onRestoreEditor={onRestoreEditor}
           onCloseEditor={onCloseEditor}
+          position="bottom"
         />
       )}
     </div>

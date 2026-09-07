@@ -1005,6 +1005,7 @@ const handleClearLogs = (processId: string) => {
                   minimizedEditors={editorSessions.filter(s => s.mode === 'minimized')}
                   onRestoreEditor={restoreEditor}
                   onCloseEditor={closeEditor}
+                  position="bottom"
                 />
               )}
             </div>
