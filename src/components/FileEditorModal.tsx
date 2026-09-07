@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Palette, Check } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Palette, Check } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
@@ -20,6 +20,13 @@ interface FileEditorModalProps {
   projectName?: string;
   gitBranch?: string | null;
   defaultEditorTheme?: EditorTheme;
+  mode?: 'floating' | 'minimized' | 'maximized';
+  zIndex?: number;
+  pos?: { x: number; y: number; w: number; h: number };
+  onFocus?: () => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onUpdatePos?: (pos: { x: number; y: number; w: number; h: number }) => void;
   onClose: () => void;
 }
 
@@ -80,12 +87,13 @@ function ThemeMenu({ editorTheme, open, onToggle, onSelect }: ThemeMenuProps) {
   );
 }
 
-export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEditorTheme, onClose }: FileEditorModalProps) {
+export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEditorTheme, mode: controlledMode, zIndex = 50, pos, onFocus, onMinimize, onMaximize, onUpdatePos, onClose }: FileEditorModalProps) {
   const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(-1);
   const [confirmClose, setConfirmClose] = useState<boolean>(false);
   const [explorerCollapsed, setExplorerCollapsed] = useState<boolean>(false);
-  const [isMaximized, setIsMaximized] = useState(false);
+  const [internalMaximized, setInternalMaximized] = useState(false);
+  const isMaximized = controlledMode ? controlledMode === 'maximized' : internalMaximized;
   const [editorTheme, setEditorTheme] = useState<EditorTheme>(() => defaultEditorTheme ?? getGlobalEditorTheme());
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(220);
@@ -94,6 +102,8 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
   const openFilesRef = useRef(openFiles);
   const activeIndexRef = useRef(activeIndex);
   const isDraggingRef = useRef(false);
+  const isWindowDraggingRef = useRef(false);
+  const windowRef = useRef<HTMLDivElement>(null);
 
   openFilesRef.current = openFiles;
   activeIndexRef.current = activeIndex;
@@ -210,19 +220,35 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     confirmResolveRef.current?.(confirmed);
   };
 
+  const toggleMaximize = useCallback(() => {
+    if (onMaximize) onMaximize();
+    else setInternalMaximized(prev => !prev);
+  }, [onMaximize]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // Solo reaccionar si la ventana está enfocada (zIndex alto o contiene activeElement)
+      const el = windowRef.current;
+      const isFocused = el && el.contains(document.activeElement);
+      if (!isFocused && zIndex < 90) {
+        // si no está enfocada, solo permitir Ctrl+S global si hay dirty, pero Escape no cierra otras ventanas
+        if (e.key === 'Escape' && !confirmClose) return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        // si la ventana no está enfocada no interceptar
+        if (el && !el.contains(document.activeElement)) return;
         e.preventDefault();
         saveFile();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'M') {
+        if (el && !el.contains(document.activeElement)) return;
         e.preventDefault();
-        setIsMaximized(prev => !prev);
+        toggleMaximize();
         return;
       }
       if (e.key === 'Escape') {
+        if (el && !el.contains(document.activeElement)) return;
         e.preventDefault();
         if (confirmClose) {
           handleConfirmResponse(false);
@@ -233,7 +259,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleModalClose, confirmClose, saveFile]);
+  }, [handleModalClose, confirmClose, saveFile, zIndex, toggleMaximize]);
 
   useEffect(() => {
     if (!themeMenuOpen) return;
@@ -249,29 +275,87 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
 
   const handleHeaderDoubleClick = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
-    setIsMaximized(prev => !prev);
-  }, []);
+    toggleMaximize();
+  }, [toggleMaximize]);
+
+  const handleWindowDragStart = useCallback((e: React.MouseEvent) => {
+    if (isMaximized) return;
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    isWindowDraggingRef.current = true;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPos = pos || { x: 80, y: 48, w: 1100, h: 720 };
+    const startLeft = startPos.x;
+    const startTop = startPos.y;
+
+    const handleMove = (mv: MouseEvent) => {
+      if (!isWindowDraggingRef.current) return;
+      const dx = mv.clientX - startX;
+      const dy = mv.clientY - startY;
+      const newPos = { ...startPos, x: Math.max(0, startLeft + dx), y: Math.max(0, startTop + dy) };
+      onUpdatePos?.(newPos);
+      // fallback direct style update for smooth drag when not controlled
+      if (!pos && windowRef.current) {
+        windowRef.current.style.left = `${newPos.x}px`;
+        windowRef.current.style.top = `${newPos.y}px`;
+      }
+    };
+    const handleUp = () => {
+      isWindowDraggingRef.current = false;
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+    };
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+  }, [isMaximized, pos, onUpdatePos]);
+
+  // Estilo flotante no bloqueante: ventana posicionada, sin backdrop global
+  const floatingStyle: React.CSSProperties = isMaximized
+    ? {
+        left: 0,
+        top: 0,
+        width: '100vw',
+        height: '100vh',
+        backgroundColor: 'var(--bg-surface)',
+        border: '1px solid var(--border-color)',
+      }
+    : pos
+      ? {
+          left: pos.x,
+          top: pos.y,
+          width: pos.w,
+          height: pos.h,
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)',
+        }
+      : {
+          width: '92vw',
+          height: '88vh',
+          backgroundColor: 'var(--bg-surface)',
+          border: '1px solid var(--border-color)',
+        };
+
+  const wrapperStyle: React.CSSProperties = pos || isMaximized
+    ? { zIndex, ...floatingStyle }
+    : { zIndex, ...floatingStyle, margin: 'auto' as any };
+
+  const isFloating = !!pos || controlledMode != null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)' }}
+      ref={windowRef}
+      className={`fixed flex flex-col overflow-hidden shadow-2xl ${isMaximized ? 'rounded-none' : 'rounded-xl'} ${isFloating ? '' : 'inset-0 m-auto'}`}
+      style={wrapperStyle}
+      onMouseDown={() => onFocus?.()}
     >
-      <div
-        className={`flex flex-col overflow-hidden shadow-2xl ${isMaximized ? 'rounded-none' : 'rounded-xl'}`}
-        style={{
-          width: isMaximized ? '100vw' : '92vw',
-          height: isMaximized ? '100vh' : '88vh',
-          backgroundColor: 'var(--bg-surface)',
-          border: '1px solid var(--border-color)',
-        }}
-      >
         {/* Header */}
         <div
           className="flex items-center justify-between px-4 py-2 flex-shrink-0 select-none"
           style={{ borderBottom: '1px solid var(--border-color)', cursor: isMaximized ? 'default' : 'grab' }}
+          onMouseDown={handleWindowDragStart}
           onDoubleClick={handleHeaderDoubleClick}
-          title={isMaximized ? 'Doble clic para restaurar' : 'Doble clic para maximizar'}
+          title={isMaximized ? 'Doble clic para restaurar' : 'Arrastrar para mover · Doble clic para maximizar'}
         >
           <div className="flex items-center gap-2">
             <button
@@ -309,8 +393,17 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
               </>
             )}
                         <ThemeMenu editorTheme={editorTheme} open={themeMenuOpen} onToggle={() => setThemeMenuOpen(prev => !prev)} onSelect={handleThemeSelect} />
+            {onMinimize && (
+              <button
+                onClick={() => onMinimize()}
+                className="p-1 rounded hover:bg-hover transition-colors text-muted"
+                title="Minimizar a tab"
+              >
+                <Minus size={14} />
+              </button>
+            )}
             <button
-              onClick={() => setIsMaximized(prev => !prev)}
+              onClick={() => toggleMaximize()}
               className="p-1 rounded hover:bg-hover transition-colors text-muted"
               title={isMaximized ? 'Restore' : 'Maximize'}
             >
@@ -398,11 +491,37 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
             <kbd className="bg-elevated border-light px-1 py-0.5 rounded">Ctrl+S</kbd> Save
           </span>
         </div>
-      </div>
 
-      {/* Confirm dialog */}
+      {/* Resize handle para ventana flotante */}
+      {!isMaximized && pos && (
+        <div
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startW = pos.w;
+            const startH = pos.h;
+            const handleMove = (mv: MouseEvent) => {
+              const newW = Math.max(500, startW + (mv.clientX - startX));
+              const newH = Math.max(320, startH + (mv.clientY - startY));
+              onUpdatePos?.({ ...pos, w: newW, h: newH });
+            };
+            const handleUp = () => {
+              document.removeEventListener('mousemove', handleMove);
+              document.removeEventListener('mouseup', handleUp);
+            };
+            document.addEventListener('mousemove', handleMove);
+            document.addEventListener('mouseup', handleUp);
+          }}
+          className="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize"
+          style={{ background: 'transparent' }}
+          title="Arrastrar para redimensionar"
+        />
+      )}
+
+      {/* Confirm dialog - absolute dentro de ventana flotante */}
       {confirmClose && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="rounded-xl p-6 shadow-2xl max-w-sm w-full" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
             <div className="flex items-center gap-3 mb-4">
               <AlertTriangle size={20} style={{ color: '#fbbf24' }} />

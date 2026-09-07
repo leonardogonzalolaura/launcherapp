@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Square, X, Trash, CornerDownLeft } from 'lucide-react';
-import { ProcessTab } from '../types';
+import { ProcessTab, EditorSession } from '../types';
 import { ProcessTabBar } from './ProcessTabBar';
 import { classifyLine, renderContentWithLinks } from './ConsoleTab';
 
@@ -17,6 +17,9 @@ interface PsConsoleProps {
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   gitBranches: Record<string, string | null>;
+  minimizedEditors?: EditorSession[];
+  onRestoreEditor?: (projectId: string) => void;
+  onCloseEditor?: (projectId: string) => void;
 }
 
 export function PsConsole({
@@ -32,6 +35,9 @@ export function PsConsole({
   onSelectTab,
   onCloseTab,
   gitBranches,
+  minimizedEditors = [],
+  onRestoreEditor,
+  onCloseEditor,
 }: PsConsoleProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -142,6 +148,9 @@ export function PsConsole({
           gitBranches={gitBranches}
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
+          minimizedEditors={minimizedEditors}
+          onRestoreEditor={onRestoreEditor}
+          onCloseEditor={onCloseEditor}
         />
       )}
 
@@ -224,6 +233,9 @@ export function PsConsole({
           gitBranches={gitBranches}
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
+          minimizedEditors={minimizedEditors}
+          onRestoreEditor={onRestoreEditor}
+          onCloseEditor={onCloseEditor}
         />
       )}
     </div>

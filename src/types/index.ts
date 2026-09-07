@@ -85,3 +85,15 @@ export interface ProcessTab {
   project_type?: string;
   kind?: 'process' | 'ps';
 }
+
+export interface EditorSession {
+  id: string;
+  project_id: string;
+  project_name: string;
+  project_path: string;
+  project_type?: string;
+  git_branch?: string | null;
+  mode: 'floating' | 'minimized' | 'maximized';
+  zIndex: number;
+  pos: { x: number; y: number; w: number; h: number };
+}

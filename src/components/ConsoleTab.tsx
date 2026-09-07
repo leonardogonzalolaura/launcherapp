@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Square, X, Play, Trash, Copy, ArrowDown, Filter, Globe, Search, SearchX } from 'lucide-react';
-import { ProcessTab } from '../types';
+import { ProcessTab, EditorSession } from '../types';
 import { JsonViewer, isJsonLine } from './JsonViewer';
 import { ApiExplorer } from './ApiExplorer';
 import { ProcessTabBar } from './ProcessTabBar';
@@ -18,6 +18,9 @@ interface ConsoleTabProps {
   onSelectTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => void;
   gitBranches: Record<string, string | null>;
+  minimizedEditors?: EditorSession[];
+  onRestoreEditor?: (projectId: string) => void;
+  onCloseEditor?: (projectId: string) => void;
 }
 
 // Detectar líneas de éxito (transversal a todos los lenguajes)
@@ -330,7 +333,7 @@ export const renderContentWithLinks = (content: string) => {
   });
 };
 
-export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition, allTabs, activeTabId, onSelectTab, onCloseTab, gitBranches }: ConsoleTabProps) {
+export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition, allTabs, activeTabId, onSelectTab, onCloseTab, gitBranches, minimizedEditors = [], onRestoreEditor, onCloseEditor }: ConsoleTabProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
   const [logFilter, setLogFilter] = useState<'all' | 'error' | 'warning' | 'success'>('all');
@@ -711,6 +714,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           gitBranches={gitBranches}
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
+          minimizedEditors={minimizedEditors}
+          onRestoreEditor={onRestoreEditor}
+          onCloseEditor={onCloseEditor}
         />
       )}
 
@@ -800,6 +806,9 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           gitBranches={gitBranches}
           onSelectTab={onSelectTab}
           onCloseTab={onCloseTab}
+          minimizedEditors={minimizedEditors}
+          onRestoreEditor={onRestoreEditor}
+          onCloseEditor={onCloseEditor}
         />
       )}
     </div>

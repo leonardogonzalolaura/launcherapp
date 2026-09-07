@@ -24,6 +24,7 @@ import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { ProjectPaletteModal } from './components/ProjectPaletteModal';
 import { BranchPickerModal } from './components/BranchPickerModal';
 import { FileEditorModal } from './components/FileEditorModal';
+import { ProcessTabBar } from './components/ProcessTabBar';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { EDITOR_THEMES, getGlobalEditorTheme, setGlobalEditorTheme, type EditorTheme } from './util/editorThemes';
 
@@ -90,8 +91,8 @@ function AppContent() {
   const [branchPickerProject, setBranchPickerProject] = useState<Project | null>(null);
   const [paletteRefocus, setPaletteRefocus] = useState(0);
   const [quickSwitchRefocus, setQuickSwitchRefocus] = useState(0);
-  const [showFileEditor, setShowFileEditor] = useState(false);
-  const [editorProject, setEditorProject] = useState<Project | null>(null);
+  const [editorSessions, setEditorSessions] = useState<import('./types').EditorSession[]>([]);
+  const [nextZ, setNextZ] = useState(50);
   const [globalEditorTheme, setGlobalEditorThemeState] = useState<EditorTheme>(() => getGlobalEditorTheme());
   const [showGlobalThemeMenu, setShowGlobalThemeMenu] = useState(false);
   // Mapa projectId -> rama git actual (polling en vivo)
@@ -588,12 +589,79 @@ const handleClearLogs = (processId: string) => {
     }
   };
 
+  // ─── Editor floating helpers ───────────────────────────────────────────
+  const getNextPos = (idx: number) => {
+    const offset = 32 * (idx % 6);
+    const vw = Math.max(window.innerWidth - 560, 400);
+    const vh = Math.max(window.innerHeight - 120, 300);
+    return { x: 260 + offset, y: 48 + offset, w: Math.min(1100, vw), h: Math.min(720, vh) };
+  };
+
+  const openEditor = (project: Project) => {
+    setEditorSessions(prev => {
+      const existing = prev.find(s => s.project_id === project.id);
+      if (existing) {
+        // restaurar si estaba minimizado
+        if (existing.mode === 'minimized') {
+          const z = nextZ + 1;
+          setNextZ(z);
+          return prev.map(s => s.project_id === project.id ? { ...s, mode: 'floating' as const, zIndex: z } : s);
+        }
+        // ya flotante -> solo traer al frente
+        const z = nextZ + 1;
+        setNextZ(z);
+        return prev.map(s => s.project_id === project.id ? { ...s, zIndex: z } : s);
+      }
+      const z = nextZ + 1;
+      setNextZ(z);
+      const pos = getNextPos(prev.length);
+      return [...prev, {
+        id: project.id,
+        project_id: project.id,
+        project_name: project.name,
+        project_path: project.path,
+        project_type: project.project_type,
+        git_branch: gitBranches[project.id] ?? null,
+        mode: 'floating' as const,
+        zIndex: z,
+        pos,
+      }];
+    });
+  };
+
+  const closeEditor = (projectId: string) => {
+    setEditorSessions(prev => prev.filter(s => s.project_id !== projectId));
+  };
+
+  const minimizeEditor = (projectId: string) => {
+    setEditorSessions(prev => prev.map(s => s.project_id === projectId ? { ...s, mode: 'minimized' as const } : s));
+  };
+
+  const restoreEditor = (projectId: string) => {
+    const z = nextZ + 1;
+    setNextZ(z);
+    setEditorSessions(prev => prev.map(s => s.project_id === projectId ? { ...s, mode: 'floating' as const, zIndex: z } : s));
+  };
+
+  const maximizeEditor = (projectId: string) => {
+    setEditorSessions(prev => prev.map(s => s.project_id === projectId ? { ...s, mode: s.mode === 'maximized' ? 'floating' as const : 'maximized' as const } : s));
+  };
+
+  const focusEditor = (projectId: string) => {
+    const z = nextZ + 1;
+    setNextZ(z);
+    setEditorSessions(prev => prev.map(s => s.project_id === projectId ? { ...s, zIndex: z } : s));
+  };
+
+  const updateEditorPos = (projectId: string, pos: { x: number; y: number; w: number; h: number }) => {
+    setEditorSessions(prev => prev.map(s => s.project_id === projectId ? { ...s, pos } : s));
+  };
+
   // ─── Helpers ─────────────────────────────────────────────────────────────
   const activeTab = processTabs.find(t => t.process_id === activeTabId) ?? null;
   const contextProject = activeTab
     ? projects.find(p => p.id === activeTab.project_id) ?? selectedProject
     : selectedProject;
-  const editorTarget = editorProject || contextProject;
 
   const handleCommandPaletteAction = (action: string) => {
     switch (action) {
@@ -634,7 +702,7 @@ const handleClearLogs = (processId: string) => {
         setShowCustomModal(true);
         break;
       case 'open-file-editor':
-        setShowFileEditor(true);
+        if (contextProject) openEditor(contextProject);
         break;
       case 'open-ps':
         if (contextProject) {
@@ -727,7 +795,7 @@ const handleClearLogs = (processId: string) => {
     }
   };
 
-  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette || showBranchPicker || showFileEditor;
+  const isModalOpen = showCustomModal || confirmDelete !== null || showQuickSwitch || showFooterMenu || showShortcutHelp || showCommandPalette || showProjectPalette || showBranchPicker;
 
   useKeyboardShortcuts([
     {
@@ -752,7 +820,7 @@ const handleClearLogs = (processId: string) => {
     },
     {
       key: 'e', ctrl: true, shift: true, label: 'Open file editor', category: 'Global',
-      handler: () => { if (!isModalOpen && contextProject) setShowFileEditor(true); },
+      handler: () => { if (contextProject) openEditor(contextProject); },
     },
     {
       key: 'w', ctrl: true, label: 'Close active tab', category: 'Global',
@@ -778,7 +846,6 @@ const handleClearLogs = (processId: string) => {
         else if (showBranchPicker) setShowBranchPicker(false);
         else if (showQuickSwitch) setShowQuickSwitch(false);
         else if (showProjectPalette) setShowProjectPalette(false);
-        else if (showFileEditor) setShowFileEditor(false);
         else if (showCustomModal) { setShowCustomModal(false); setEditingConfig(null); }
         else if (confirmDelete) setConfirmDelete(null);
         else if (showFooterMenu) setShowFooterMenu(false);
@@ -841,6 +908,9 @@ const handleClearLogs = (processId: string) => {
               onSelectTab={setActiveTabId}
               onCloseTab={handleCloseTab}
               gitBranches={gitBranches}
+              minimizedEditors={editorSessions.filter(s => s.mode === 'minimized')}
+              onRestoreEditor={restoreEditor}
+              onCloseEditor={closeEditor}
             />
           ) : activeTab ? (
             <ConsoleTab
@@ -857,14 +927,18 @@ const handleClearLogs = (processId: string) => {
               onSelectTab={setActiveTabId}
               onCloseTab={handleCloseTab}
               gitBranches={gitBranches}
+              minimizedEditors={editorSessions.filter(s => s.mode === 'minimized')}
+              onRestoreEditor={restoreEditor}
+              onCloseEditor={closeEditor}
             />
           ) : (
-            <div className="flex-1 flex items-center justify-center flex-col gap-4 text-muted">
-              <Terminal size={56} className="opacity-20" />
-              <div className="text-center">
-                <p className="text-sm font-medium">No active console</p>
-                <p className="text-xs mt-1">Run a command to see live output here</p>
-              </div>
+            <div className="flex-1 flex flex-col overflow-hidden">
+              <div className="flex-1 flex items-center justify-center flex-col gap-4 text-muted">
+                <Terminal size={56} className="opacity-20" />
+                <div className="text-center">
+                  <p className="text-sm font-medium">No active console</p>
+                  <p className="text-xs mt-1">Run a command to see live output here</p>
+                </div>
               {selectedProject && (
                 <div className="flex gap-3 mt-2">
                   {selectedProject.configurations.slice(0, 3).map((c, i) => (
@@ -881,7 +955,7 @@ const handleClearLogs = (processId: string) => {
                     </button>
                   ))}
                   <button
-                    onClick={() => setShowFileEditor(true)}
+                    onClick={() => selectedProject && openEditor(selectedProject)}
                     className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all"
                     style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-light)', color: 'var(--text-secondary)' }}
                     onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#1f1f35'; e.currentTarget.style.color = '#e2e4f0'; }}
@@ -901,6 +975,37 @@ const handleClearLogs = (processId: string) => {
                     <span style={{ color: '#c084fc' }}>&gt;_</span> PowerShell
                   </button>
                 </div>
+              )}
+              {editorSessions.filter(s => s.mode === 'minimized').length > 0 && (
+                <div className="flex flex-col items-center gap-2 mt-4 p-3 rounded-lg" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
+                  <span className="text-xs text-secondary">Editores minimizados — click para restaurar</span>
+                  <div className="flex gap-2 flex-wrap justify-center">
+                    {editorSessions.filter(s => s.mode === 'minimized').map(ed => (
+                      <button
+                        key={`restore-${ed.project_id}`}
+                        onClick={() => restoreEditor(ed.project_id)}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded text-xs font-medium transition-colors"
+                        style={{ backgroundColor: 'rgba(110,127,255,0.15)', color: '#a5b4fc', border: '1px solid rgba(110,127,255,0.3)' }}
+                      >
+                        <span>📝</span> {ed.project_name}
+                        <span className="px-1.5 py-0.5 rounded text-[10px]" style={{ backgroundColor: 'rgba(110,127,255,0.25)' }}>↗ Restaurar</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </div>
+              {editorSessions.filter(s => s.mode === 'minimized').length > 0 && (
+                <ProcessTabBar
+                  tabs={processTabs}
+                  activeTabId={activeTabId}
+                  gitBranches={gitBranches}
+                  onSelectTab={setActiveTabId}
+                  onCloseTab={handleCloseTab}
+                  minimizedEditors={editorSessions.filter(s => s.mode === 'minimized')}
+                  onRestoreEditor={restoreEditor}
+                  onCloseEditor={closeEditor}
+                />
               )}
             </div>
           )}
@@ -943,9 +1048,8 @@ const handleClearLogs = (processId: string) => {
             handleCommandPaletteSelect(projectId, configIndex);
           }}
           onOpenEditor={(project) => {
-            setEditorProject(project);
             setSelectedProject(project);
-            setShowFileEditor(true);
+            openEditor(project);
             setShowQuickSwitch(false);
           }}
           onOpenPowerShell={(project) => {
@@ -1005,16 +1109,24 @@ const handleClearLogs = (processId: string) => {
         />
       )}
 
-      {/* File Editor Modal (Ctrl+Shift+E) */}
-      {showFileEditor && editorTarget && (
+      {/* Floating Editors (non-blocking, multi-app) */}
+      {editorSessions.filter(s => s.mode !== 'minimized').map(session => (
         <FileEditorModal
-          projectPath={editorTarget.path}
-          projectName={editorTarget.name}
-          gitBranch={gitBranches[editorTarget.id]}
+          key={session.id}
+          projectPath={session.project_path}
+          projectName={session.project_name}
+          gitBranch={gitBranches[session.project_id] ?? session.git_branch ?? null}
           defaultEditorTheme={globalEditorTheme}
-          onClose={() => { setShowFileEditor(false); setEditorProject(null); }}
+          mode={session.mode}
+          zIndex={session.zIndex}
+          pos={session.pos}
+          onFocus={() => focusEditor(session.project_id)}
+          onMinimize={() => minimizeEditor(session.project_id)}
+          onMaximize={() => maximizeEditor(session.project_id)}
+          onUpdatePos={(pos) => updateEditorPos(session.project_id, pos)}
+          onClose={() => closeEditor(session.project_id)}
         />
-      )}
+      ))}
 
       {/* Footer */}
       <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid var(--border-color)' }}>
