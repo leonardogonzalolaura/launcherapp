@@ -260,6 +260,18 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     setFocusedPath(path);
   }, []);
 
+  // VS Code compact-style: only merge expanded single-folder chain
+  const getCompactFolder = (node: TreeNode): { displayName: string; deepest: TreeNode } => {
+    let cur = node;
+    let name = node.name;
+    while (cur.expanded && cur.children.length === 1 && !cur.children[0].isFile && cur.children[0].expanded) {
+      const child = cur.children[0];
+      name += `/${child.name}`;
+      cur = child;
+    }
+    return { displayName: name, deepest: cur };
+  };
+
   const renderNode = (node: TreeNode, depth: number): React.ReactNode | null => {
     if (!matchesSearch(node.name)) return null;
 
@@ -269,7 +281,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
         <div
           key={node.path}
           className="group flex items-center w-full rounded hover:bg-hover transition-colors"
-          style={{ paddingLeft: `${12 + depth * 16}px` }}
+          style={{ paddingLeft: `${10 + depth * 10}px` }}
           onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
           title={`${node.path} — click para abrir, click derecho para copiar ruta`}
         >
@@ -296,14 +308,16 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
       );
     }
 
+    const { displayName, deepest } = getCompactFolder(node);
     const isFolderCopied = copiedPath === node.path;
+    const isCompacted = displayName !== node.name;
     return (
       <div key={node.path}>
         <div
           className="group flex items-center w-full rounded hover:bg-hover transition-colors"
-          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          style={{ paddingLeft: `${8 + depth * 10}px` }}
           onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
-          title={`${node.path} — click para expandir, click derecho para copiar ruta`}
+          title={`${node.path}${isCompacted ? ` → ${displayName}` : ''} — click para expandir, click derecho para copiar ruta`}
         >
           <button
             data-path={node.path}
@@ -322,7 +336,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
               <ChevronRight size={12} className="flex-shrink-0" />
             )}
             <Folder size={13} className="flex-shrink-0" style={node.expanded ? { color: '#6e7fff' } : { color: '#555878' }} />
-            <span className="truncate">{node.name}</span>
+            <span className="truncate" title={displayName}>{displayName}</span>
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
@@ -334,9 +348,9 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
         </div>
         {node.expanded && (
           <div>
-            {node.children.map(child => renderNode(child, depth + 1))}
-            {node.children.length === 0 && !node.loading && (
-              <div className="text-[10px] px-2 py-0.5" style={{ paddingLeft: `${28 + (depth + 1) * 16}px`, color: '#3d3f60' }}>
+            {deepest.children.map(child => renderNode(child, depth + 1))}
+            {deepest.children.length === 0 && !deepest.loading && (
+              <div className="text-[10px] px-2 py-0.5" style={{ paddingLeft: `${18 + depth * 10}px`, color: '#3d3f60' }}>
                 empty
               </div>
             )}

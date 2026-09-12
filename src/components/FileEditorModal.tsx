@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Palette, Check, Copy } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Palette, Check, Copy, Folder, PanelLeft } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
@@ -342,6 +342,55 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     document.addEventListener('mouseup', handleUp);
   }, [isMaximized, pos, onUpdatePos]);
 
+  // Resize from any edge/corner when floating (not maximized)
+  const handleResizeStart = useCallback((e: React.MouseEvent, dir: 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw') => {
+    if (isMaximized || !pos) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const start = { ...pos };
+    const MIN_W = 500;
+    const MIN_H = 320;
+
+    const handleMove = (mv: MouseEvent) => {
+      const dx = mv.clientX - startX;
+      const dy = mv.clientY - startY;
+      let { x, y, w, h } = start;
+
+      if (dir.includes('e')) w = start.w + dx;
+      if (dir.includes('s')) h = start.h + dy;
+      if (dir.includes('w')) { w = start.w - dx; x = start.x + dx; }
+      if (dir.includes('n')) { h = start.h - dy; y = start.y + dy; }
+
+      // Enforce minimum size, keeping the opposite edge anchored
+      if (w < MIN_W) { if (dir.includes('w')) x -= (MIN_W - w); w = MIN_W; }
+      if (h < MIN_H) { if (dir.includes('n')) y -= (MIN_H - h); h = MIN_H; }
+
+      // Clamp within viewport
+      const maxW = Math.max(MIN_W, window.innerWidth - x - 8);
+      const maxH = Math.max(MIN_H, window.innerHeight - y - 8);
+      if (w > maxW) w = maxW;
+      if (h > maxH) h = maxH;
+      if (x < 0) { w += x; x = 0; }
+      if (y < 0) { h += y; y = 0; }
+      if (w < MIN_W) w = MIN_W;
+      if (h < MIN_H) h = MIN_H;
+
+      onUpdatePos?.({ x, y, w, h });
+    };
+    const handleUp = () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = getComputedStyle(e.currentTarget as Element).cursor;
+  }, [isMaximized, pos, onUpdatePos]);
+
   // Estilo flotante no bloqueante: ventana posicionada, sin backdrop global
   const floatingStyle: React.CSSProperties = isMaximized
     ? {
@@ -390,13 +439,6 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
           title={isMaximized ? 'Doble clic para restaurar' : 'Arrastrar para mover · Doble clic para maximizar'}
         >
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setExplorerCollapsed(prev => !prev)}
-              className="p-0.5 rounded hover:bg-hover transition-colors text-muted"
-              title={explorerCollapsed ? 'Show explorer' : 'Hide explorer'}
-            >
-              {explorerCollapsed ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
-            </button>
             <span className="text-xs font-medium text-muted">📁 File Editor</span>
             {projectName && (
               <>
@@ -463,16 +505,47 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
 
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
-          {/* File Explorer */}
+          {/* File Explorer — kept mounted when collapsed so tree navigation is preserved */}
           <div
-            className="flex-shrink-0 overflow-hidden"
+            className="flex-shrink-0 overflow-hidden relative"
             style={{
-              width: explorerCollapsed ? '0px' : `${explorerWidth}px`,
-              borderRight: explorerCollapsed ? 'none' : '1px solid var(--border-color)',
+              width: explorerCollapsed ? '34px' : `${explorerWidth}px`,
+              borderRight: '1px solid var(--border-color)',
               transition: isDraggingRef.current ? 'none' : 'width 200ms',
             }}
           >
-            {!explorerCollapsed && <FileExplorer rootPath={projectPath} onOpenFile={openFile} />}
+            {/* Collapsed rail — click to reopen */}
+            {explorerCollapsed && (
+              <button
+                onClick={() => setExplorerCollapsed(false)}
+                className="h-full w-full flex flex-col items-center pt-2 gap-2 hover:bg-hover transition-colors text-muted"
+                title="Mostrar explorador de archivos"
+              >
+                <PanelLeft size={15} />
+                <Folder size={14} />
+                <ChevronRight size={13} />
+              </button>
+            )}
+
+            {/* Full explorer, hidden (not unmounted) when collapsed */}
+            <div
+              className="h-full flex flex-col"
+              style={{ display: explorerCollapsed ? 'none' : 'flex', width: `${explorerWidth}px` }}
+            >
+              <div className="flex items-center justify-between px-2 py-1 flex-shrink-0" style={{ borderBottom: '1px solid var(--border-color)' }}>
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-muted">Explorer</span>
+                <button
+                  onClick={() => setExplorerCollapsed(true)}
+                  className="p-0.5 rounded hover:bg-hover transition-colors text-muted"
+                  title="Ocultar explorador de archivos"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-hidden">
+                <FileExplorer rootPath={projectPath} onOpenFile={openFile} />
+              </div>
+            </div>
           </div>
 
           {/* Resize handle */}
@@ -539,38 +612,36 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
           </span>
         </div>
 
-      {/* Resize handle para ventana flotante */}
+      {/* Resize handles para ventana flotante (todos los bordes y esquinas) */}
       {!isMaximized && pos && (
-        <div
-          onMouseDown={(e) => {
-            e.preventDefault();
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startW = pos.w;
-            const startH = pos.h;
-            const handleMove = (mv: MouseEvent) => {
-              const maxW = Math.max(500, window.innerWidth - pos.x - 8);
-              const maxH = Math.max(320, window.innerHeight - pos.y - 8);
-              const newW = Math.max(500, Math.min(maxW, startW + (mv.clientX - startX)));
-              const newH = Math.max(320, Math.min(maxH, startH + (mv.clientY - startY)));
-              onUpdatePos?.({ ...pos, w: newW, h: newH });
-            };
-            const handleUp = () => {
-              document.removeEventListener('mousemove', handleMove);
-              document.removeEventListener('mouseup', handleUp);
-            };
-            document.addEventListener('mousemove', handleMove);
-            document.addEventListener('mouseup', handleUp);
-          }}
-          className="absolute right-0 bottom-0 w-4 h-4 cursor-nwse-resize"
-          style={{ background: 'transparent' }}
-          title="Arrastrar para redimensionar"
-        />
+        <>
+          {/* Edges */}
+          <div onMouseDown={(e) => handleResizeStart(e, 'n')} className="absolute top-0 left-0 right-0 h-1 cursor-ns-resize z-20" />
+          <div onMouseDown={(e) => handleResizeStart(e, 's')} className="absolute bottom-0 left-0 right-0 h-1 cursor-ns-resize z-20" />
+          <div onMouseDown={(e) => handleResizeStart(e, 'w')} className="absolute top-0 bottom-0 left-0 w-1 cursor-ew-resize z-20" />
+          <div onMouseDown={(e) => handleResizeStart(e, 'e')} className="absolute top-0 bottom-0 right-0 w-1 cursor-ew-resize z-20" />
+          {/* Corners */}
+          <div onMouseDown={(e) => handleResizeStart(e, 'nw')} className="absolute top-0 left-0 w-3 h-3 cursor-nwse-resize z-30" />
+          <div onMouseDown={(e) => handleResizeStart(e, 'ne')} className="absolute top-0 right-0 w-3 h-3 cursor-nesw-resize z-30" />
+          <div onMouseDown={(e) => handleResizeStart(e, 'sw')} className="absolute bottom-0 left-0 w-3 h-3 cursor-nesw-resize z-30" />
+          {/* Visible grip bottom-right */}
+          <div
+            onMouseDown={(e) => handleResizeStart(e, 'se')}
+            className="absolute bottom-0 right-0 w-5 h-5 cursor-nwse-resize z-30 flex items-end justify-end pr-0.5 pb-0.5 opacity-40 hover:opacity-100 transition-opacity"
+            title="Arrastrar para redimensionar"
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <line x1="11" y1="1" x2="1" y2="11" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" />
+              <line x1="11" y1="5" x2="5" y2="11" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" />
+              <line x1="11" y1="9" x2="9" y2="11" stroke="var(--text-muted)" strokeWidth="1.4" strokeLinecap="round" />
+            </svg>
+          </div>
+        </>
       )}
 
       {/* Confirm dialog - absolute dentro de ventana flotante */}
       {confirmClose && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
+        <div className="absolute inset-0 z-40 flex items-center justify-center" style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}>
           <div className="rounded-xl p-6 shadow-2xl max-w-sm w-full" style={{ backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)' }}>
             <div className="flex items-center gap-3 mb-4">
               <AlertTriangle size={20} style={{ color: '#fbbf24' }} />
