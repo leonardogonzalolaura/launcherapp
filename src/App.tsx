@@ -1110,23 +1110,28 @@ const handleClearLogs = (processId: string) => {
         />
       )}
 
-      {/* Floating Editors (non-blocking, multi-app) */}
-      {editorSessions.filter(s => s.mode !== 'minimized').map(session => (
-        <FileEditorModal
+      {/* Floating Editors (non-blocking, multi-app) — keep minimized mounted hidden to preserve navigation/openFiles */}
+      {editorSessions.map(session => (
+        <div
           key={session.id}
-          projectPath={session.project_path}
-          projectName={session.project_name}
-          gitBranch={gitBranches[session.project_id] ?? session.git_branch ?? null}
-          defaultEditorTheme={globalEditorTheme}
-          mode={session.mode}
-          zIndex={session.zIndex}
-          pos={session.pos}
-          onFocus={() => focusEditor(session.project_id)}
-          onMinimize={() => minimizeEditor(session.project_id)}
-          onMaximize={() => maximizeEditor(session.project_id)}
-          onUpdatePos={(pos) => updateEditorPos(session.project_id, pos)}
-          onClose={() => closeEditor(session.project_id)}
-        />
+          style={{ display: session.mode === 'minimized' ? 'none' : undefined }}
+          aria-hidden={session.mode === 'minimized'}
+        >
+          <FileEditorModal
+            projectPath={session.project_path}
+            projectName={session.project_name}
+            gitBranch={gitBranches[session.project_id] ?? session.git_branch ?? null}
+            defaultEditorTheme={globalEditorTheme}
+            mode={session.mode}
+            zIndex={session.zIndex}
+            pos={session.pos}
+            onFocus={() => focusEditor(session.project_id)}
+            onMinimize={() => minimizeEditor(session.project_id)}
+            onMaximize={() => maximizeEditor(session.project_id)}
+            onUpdatePos={(pos) => updateEditorPos(session.project_id, pos)}
+            onClose={() => closeEditor(session.project_id)}
+          />
+        </div>
       ))}
 
       {/* Footer */}

@@ -344,6 +344,41 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [elapsed, setElapsed] = useState('00:00:00');
+  // Resizable split between logs and API Client
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const [apiPanelWidth, setApiPanelWidth] = useState(520);
+  const [isResizingApi, setIsResizingApi] = useState(false);
+
+  const handleApiResizeMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizingApi(true);
+  };
+
+  useEffect(() => {
+    if (!isResizingApi) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      // api panel is on the right: width = rect.right - e.clientX
+      const newWidth = rect.right - e.clientX;
+      const minApi = 340;
+      const minLogs = 300;
+      const maxApi = Math.max(minApi, rect.width - minLogs);
+      setApiPanelWidth(Math.max(minApi, Math.min(maxApi, newWidth)));
+    };
+    const handleMouseUp = () => setIsResizingApi(false);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    // Prevent text selection while dragging
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    };
+  }, [isResizingApi]);
 
   useEffect(() => {
     if (autoScroll) {
@@ -721,11 +756,11 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
         />
       )}
 
-      {/* Split Layout Container */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Split Layout Container — resizable between logs and API Client */}
+      <div ref={splitContainerRef} className="flex-1 flex overflow-hidden">
         {/* Log output */}
         {(!showApiExplorer || !isApiExplorerMaximized) && (
-          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-base">
+          <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-base min-w-[280px]">
             {searchFilteredLogs.length === 0 ? (
               <div className="flex items-center justify-center h-full text-center" style={{ color: 'var(--text-muted)' }}>
                 <div className="flex flex-col items-center gap-2">
@@ -784,9 +819,22 @@ export function ConsoleTab({ tab, onStop, onClose, onRerun, onClear, tabPosition
           </div>
         )}
 
-        {/* API Client (Mini Swagger/Postman Panel) */}
+        {/* Drag handle between logs and API Client */}
+        {showApiExplorer && !isApiExplorerMaximized && (
+          <div
+            onMouseDown={handleApiResizeMouseDown}
+            onDoubleClick={() => setApiPanelWidth(520)}
+            className={`w-[4px] flex-shrink-0 cursor-col-resize hover:bg-purple-500 transition-colors ${isResizingApi ? 'bg-purple-600' : 'bg-[#1e1e35]'}`}
+            title="Arrastra para redimensionar — doble click para restaurar"
+          />
+        )}
+
+        {/* API Client (Mini Swagger/Postman Panel) — resizable */}
         {showApiExplorer && (
-          <div className={`${isApiExplorerMaximized ? 'w-full' : 'w-1/2 min-w-[420px]'} h-full flex-shrink-0 border-l border-[#252540] transition-all`}>
+          <div
+            className={`h-full flex-shrink-0 border-l border-[#252540] ${isApiExplorerMaximized ? 'w-full' : ''} ${isResizingApi ? '' : 'transition-none'}`}
+            style={isApiExplorerMaximized ? undefined : { width: `${apiPanelWidth}px`, minWidth: '340px' }}
+          >
             <ApiExplorer
               projectId={tab.project_id}
               projectName={tab.project_name}

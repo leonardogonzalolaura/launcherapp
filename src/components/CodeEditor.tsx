@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { EditorView, basicSetup } from 'codemirror';
-import { EditorState, RangeSetBuilder, StateField, StateEffect } from '@codemirror/state';
+import { EditorState, RangeSetBuilder, StateField, StateEffect, Compartment } from '@codemirror/state';
 import { keymap, ViewPlugin, Decoration, DecorationSet, ViewUpdate, hoverTooltip } from '@codemirror/view';
 import { search, setSearchQuery, getSearchQuery, SearchQuery, findNext, findPrevious, replaceNext, replaceAll } from '@codemirror/search';
 import { Search as SearchIcon, ChevronUp, ChevronDown, X } from 'lucide-react';
@@ -407,6 +407,10 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
   onOpenFileRef.current = onOpenFile;
   onConsumedNavRef.current = onConsumedNav;
 
+  // Compartments to preserve undo history when switching theme/language without recreating view
+  const languageCompartmentRef = useRef(new Compartment());
+  const themeCompartmentRef = useRef(new Compartment());
+
   const updateMatchInfo = useCallback((view: EditorView) => {
     const q = getSearchQuery(view.state);
     if (!q.search) {
@@ -503,6 +507,7 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
     return () => window.removeEventListener('keydown', handler);
   }, [openFind]);
 
+  // Initial mount/ file change — not on theme change to preserve undo history
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -521,12 +526,18 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
     const view = new EditorView({ state, parent: containerRef.current });
     viewRef.current = view;
 
+    // Initialize compartments content for later lightweight reconfigure
+    // (kept for future use; current reconfigure below preserves history)
+    languageCompartmentRef.current = new Compartment();
+    themeCompartmentRef.current = new Compartment();
+
     return () => {
       view.destroy();
       viewRef.current = null;
     };
-  }, [language, updateMatchInfo, projectPath, filePath, editorTheme]);
+  }, [language, updateMatchInfo, projectPath, filePath]);
 
+  // Theme change via reconfigure (preserves undo/history)
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !editorTheme) return;

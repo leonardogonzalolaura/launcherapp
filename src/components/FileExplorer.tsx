@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Search } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Search, Copy, Check } from 'lucide-react';
 import { readDir } from '@tauri-apps/plugin-fs';
+import { getProjectFileIndex } from '../util/editorNav';
 
 interface FileExplorerProps {
   rootPath: string;
@@ -16,7 +17,7 @@ interface TreeNode {
   loading: boolean;
 }
 
-const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'target', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next']);
+const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'target', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', '.idea', '.vscode']);
 
 const getFileIcon = (name: string): string => {
   const ext = name.split('.').pop()?.toLowerCase();
@@ -69,9 +70,18 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   const [searchResults, setSearchResults] = useState<TreeNode[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const copyPath = useCallback(async (path: string) => {
+    try {
+      await navigator.clipboard.writeText(path);
+      setCopiedPath(path);
+      setTimeout(() => setCopiedPath(null), 1500);
+    } catch {}
+  }, []);
 
   useEffect(() => {
     setLoading(true);
@@ -113,32 +123,49 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      const results: TreeNode[] = [];
-      const visited = new Set<string>();
-
-      async function walk(dir: string) {
-        if (visited.has(dir)) return;
-        visited.add(dir);
-        try {
-          const entries = await readDir(dir);
-          for (const entry of entries) {
-            if (!entry.name || EXCLUDED_DIRS.has(entry.name)) continue;
-            if (entry.name.startsWith('.')) continue;
-            const fullPath = `${dir}/${entry.name}`;
-            if (entry.isFile && entry.name.toLowerCase().includes(term)) {
-              results.push({ name: entry.name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
-            }
-            if (!entry.isFile) {
-              await walk(fullPath);
+      const termLower = term.toLowerCase();
+      try {
+        // Prefer in-memory index (fast, no extra disk I/O) — built by editorNav
+        const index = await getProjectFileIndex(rootPath);
+        const results: TreeNode[] = [];
+        for (const arr of index.byBase.values()) {
+          for (const fullPath of arr) {
+            const name = fullPath.split('/').pop() || fullPath;
+            if (name.toLowerCase().includes(termLower)) {
+              results.push({ name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
             }
           }
-        } catch { /* skip unreadable dirs */ }
+        }
+        // If index empty (first load not yet built), fallback to disk walk
+        if (results.length === 0 && index.byPath.size === 0) {
+          const visited = new Set<string>();
+          async function walk(dir: string) {
+            if (visited.has(dir)) return;
+            visited.add(dir);
+            try {
+              const entries = await readDir(dir);
+              for (const entry of entries) {
+                if (!entry.name || EXCLUDED_DIRS.has(entry.name)) continue;
+                if (entry.name.startsWith('.')) continue;
+                const fullPath = `${dir}/${entry.name}`;
+                if (entry.isFile && entry.name.toLowerCase().includes(termLower)) {
+                  results.push({ name: entry.name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
+                }
+                if (!entry.isFile) {
+                  await walk(fullPath);
+                }
+              }
+            } catch { /* skip unreadable dirs */ }
+          }
+          await walk(rootPath);
+        }
+        results.sort((a, b) => a.name.localeCompare(b.name));
+        setSearchResults(results);
+      } catch {
+        setSearchResults([]);
+      } finally {
+        setSearching(false);
       }
-
-      await walk(rootPath);
-      results.sort((a, b) => a.name.localeCompare(b.name));
-      setSearchResults(results);
-      setSearching(false);
     }, 300);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
@@ -237,46 +264,74 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     if (!matchesSearch(node.name)) return null;
 
     if (node.isFile) {
+      const isCopied = copiedPath === node.path;
       return (
-        <button
+        <div
           key={node.path}
-          data-path={node.path}
-          onClick={() => {
-            handleNodeClick(node.path);
-            onOpenFile(node.path);
-          }}
-          className="w-full flex items-center gap-1.5 px-2 py-1 text-left text-xs rounded transition-colors hover:bg-hover"
-          style={{ paddingLeft: `${12 + depth * 16}px`, color: 'var(--text-secondary)' }}
-          title={node.path}
+          className="group flex items-center w-full rounded hover:bg-hover transition-colors"
+          style={{ paddingLeft: `${12 + depth * 16}px` }}
+          onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
+          title={`${node.path} — click para abrir, click derecho para copiar ruta`}
         >
-          <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
-          <span className="truncate">{node.name}</span>
-        </button>
+          <button
+            data-path={node.path}
+            onClick={() => {
+              handleNodeClick(node.path);
+              onOpenFile(node.path);
+            }}
+            className="flex-1 flex items-center gap-1.5 py-1 text-left text-xs min-w-0"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
+            <span className="truncate">{node.name}</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
+            className="p-1 rounded hover:bg-hover flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+            title="Copiar ruta"
+          >
+            {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-muted" />}
+          </button>
+        </div>
       );
     }
 
+    const isFolderCopied = copiedPath === node.path;
     return (
       <div key={node.path}>
-        <button
-          data-path={node.path}
-          onClick={() => {
-            handleNodeClick(node.path);
-            toggleExpand(node.path);
-          }}
-          className="w-full flex items-center gap-1 px-2 py-1 text-left text-xs rounded transition-colors hover:bg-hover"
-          style={{ paddingLeft: `${8 + depth * 16}px`, color: 'var(--text-secondary)' }}
-          title={node.path}
+        <div
+          className="group flex items-center w-full rounded hover:bg-hover transition-colors"
+          style={{ paddingLeft: `${8 + depth * 16}px` }}
+          onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
+          title={`${node.path} — click para expandir, click derecho para copiar ruta`}
         >
-          {node.loading ? (
-            <span className="flex-shrink-0 text-[10px] animate-pulse">⋯</span>
-          ) : node.expanded ? (
-            <ChevronDown size={12} className="flex-shrink-0" />
-          ) : (
-            <ChevronRight size={12} className="flex-shrink-0" />
-          )}
-          <Folder size={13} className="flex-shrink-0" style={node.expanded ? { color: '#6e7fff' } : { color: '#555878' }} />
-          <span className="truncate">{node.name}</span>
-        </button>
+          <button
+            data-path={node.path}
+            onClick={() => {
+              handleNodeClick(node.path);
+              toggleExpand(node.path);
+            }}
+            className="flex-1 flex items-center gap-1 py-1 text-left text-xs min-w-0"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            {node.loading ? (
+              <span className="flex-shrink-0 text-[10px] animate-pulse">⋯</span>
+            ) : node.expanded ? (
+              <ChevronDown size={12} className="flex-shrink-0" />
+            ) : (
+              <ChevronRight size={12} className="flex-shrink-0" />
+            )}
+            <Folder size={13} className="flex-shrink-0" style={node.expanded ? { color: '#6e7fff' } : { color: '#555878' }} />
+            <span className="truncate">{node.name}</span>
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
+            className="p-1 rounded hover:bg-hover flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity mr-1"
+            title="Copiar ruta"
+          >
+            {isFolderCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-muted" />}
+          </button>
+        </div>
         {node.expanded && (
           <div>
             {node.children.map(child => renderNode(child, depth + 1))}
@@ -335,20 +390,33 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
               {searchResults.map((node) => {
                 const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
                 const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
+                const isCopied = copiedPath === node.path;
                 return (
-                  <button
+                  <div
                     key={node.path}
-                    onClick={() => onOpenFile(node.path)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs rounded transition-colors hover:bg-hover"
-                    style={{ color: 'var(--text-secondary)' }}
-                    title={node.path}
+                    className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
+                    onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
+                    title={`${node.path} — click para abrir, click derecho para copiar`}
                   >
-                    <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
-                    <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
-                    {displayPath && (
-                      <span className="truncate text-[10px] text-muted flex-shrink-0 ml-auto">{displayPath}</span>
-                    )}
-                  </button>
+                    <button
+                      onClick={() => onOpenFile(node.path)}
+                      className="flex-1 flex items-center gap-2 text-left text-xs min-w-0"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
+                      <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
+                      {displayPath && (
+                        <span className="truncate text-[10px] text-muted flex-shrink-0 ml-2">{displayPath}</span>
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
+                      className="p-1 rounded hover:bg-hover flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                      title="Copiar ruta"
+                    >
+                      {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-muted" />}
+                    </button>
+                  </div>
                 );
               })}
             </div>

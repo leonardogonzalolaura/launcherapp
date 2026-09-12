@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Palette, Check } from 'lucide-react';
+import { X, AlertTriangle, ChevronLeft, ChevronRight, Maximize2, Minimize2, Minus, Palette, Check, Copy } from 'lucide-react';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { FileExplorer } from './FileExplorer';
 import { CodeEditor } from './CodeEditor';
@@ -13,6 +13,8 @@ interface OpenFile {
   language: string;
   content: string;
   savedContent: string;
+  isLarge?: boolean;
+  isBinary?: boolean;
 }
 
 interface FileEditorModalProps {
@@ -98,6 +100,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [explorerWidth, setExplorerWidth] = useState(220);
   const [jumpTo, setJumpTo] = useState<{ path: string; line: number } | null>(null);
+  const [copiedFooter, setCopiedFooter] = useState(false);
   const confirmResolveRef = useRef<((v: boolean) => void) | null>(null);
   const openFilesRef = useRef(openFiles);
   const activeIndexRef = useRef(activeIndex);
@@ -119,6 +122,25 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     }
     try {
       const content = await readTextFile(path);
+      const LIMIT = 10 * 1024 * 1024;
+      const isBinary = content.slice(0, 1024).includes('\u0000');
+      if (content.length > LIMIT) {
+        const preview = content.slice(0, 4000);
+        const placeholder = `⚠️ Archivo excede 10MB (${(content.length / 1024 / 1024).toFixed(2)} MB) — no cargado completo para evitar OOM.\nRuta: ${path}\n\nPrimeras líneas:\n${preview}\n\n... [truncado, abre con editor externo]`;
+        const name = getFileName(path);
+        const file: OpenFile = { path, name, language: 'text', content: placeholder, savedContent: placeholder, isLarge: true };
+        setOpenFiles(prev => [...prev, file]);
+        setActiveIndex(currentFiles.length);
+        return;
+      }
+      if (isBinary) {
+        const placeholder = `⚠️ Archivo binario detectado — no se muestra contenido.\nRuta: ${path}\n\nAbre con una herramienta externa.`;
+        const name = getFileName(path);
+        const file: OpenFile = { path, name, language: 'text', content: placeholder, savedContent: placeholder, isBinary: true };
+        setOpenFiles(prev => [...prev, file]);
+        setActiveIndex(currentFiles.length);
+        return;
+      }
       const name = getFileName(path);
       const language = detectLanguage(path);
       const file: OpenFile = { path, name, language, content, savedContent: content };
@@ -155,6 +177,10 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     const idx = activeIndexRef.current;
     const file = idx >= 0 ? files[idx] : null;
     console.log('saveFile called', { path: file?.path, idx, filesCount: files.length, isDirty: file ? file.content !== file.savedContent : 'n/a' });
+    if (file && (file.isLarge || file.isBinary)) {
+      console.warn('Save blocked for large/binary placeholder');
+      return;
+    }
     if (file && file.content !== file.savedContent) {
       try {
         await writeTextFile(file.path, file.content);
@@ -293,7 +319,13 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
       if (!isWindowDraggingRef.current) return;
       const dx = mv.clientX - startX;
       const dy = mv.clientY - startY;
-      const newPos = { ...startPos, x: Math.max(0, startLeft + dx), y: Math.max(0, startTop + dy) };
+      const maxX = Math.max(0, window.innerWidth - startPos.w - 8);
+      const maxY = Math.max(0, window.innerHeight - startPos.h - 8);
+      const newPos = {
+        ...startPos,
+        x: Math.max(0, Math.min(maxX, startLeft + dx)),
+        y: Math.max(0, Math.min(maxY, startTop + dy)),
+      };
       onUpdatePos?.(newPos);
       // fallback direct style update for smooth drag when not controlled
       if (!pos && windowRef.current) {
@@ -485,9 +517,24 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
             <span className="text-[10px]" style={{ color: '#fbbf24' }}>● Modified</span>
           )}
           {activeFile && (
-            <span className="text-[10px] text-muted">{activeFile.path}</span>
+            <>
+              <span className="text-[10px] text-muted truncate flex-1" title={activeFile.path}>{activeFile.path}</span>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(activeFile.path);
+                    setCopiedFooter(true);
+                    setTimeout(() => setCopiedFooter(false), 1500);
+                  } catch {}
+                }}
+                className="p-1 rounded hover:bg-hover transition-colors flex-shrink-0"
+                title="Copiar ruta del archivo"
+              >
+                {copiedFooter ? <Check size={12} className="text-green-400" /> : <Copy size={12} className="text-muted" />}
+              </button>
+            </>
           )}
-          <span className="text-[10px] text-muted ml-auto flex items-center gap-3">
+          <span className="text-[10px] text-muted ml-auto flex items-center gap-3 flex-shrink-0">
             <kbd className="bg-elevated border-light px-1 py-0.5 rounded">Ctrl+S</kbd> Save
           </span>
         </div>
@@ -502,8 +549,10 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
             const startW = pos.w;
             const startH = pos.h;
             const handleMove = (mv: MouseEvent) => {
-              const newW = Math.max(500, startW + (mv.clientX - startX));
-              const newH = Math.max(320, startH + (mv.clientY - startY));
+              const maxW = Math.max(500, window.innerWidth - pos.x - 8);
+              const maxH = Math.max(320, window.innerHeight - pos.y - 8);
+              const newW = Math.max(500, Math.min(maxW, startW + (mv.clientX - startX)));
+              const newH = Math.max(320, Math.min(maxH, startH + (mv.clientY - startY)));
               onUpdatePos?.({ ...pos, w: newW, h: newH });
             };
             const handleUp = () => {

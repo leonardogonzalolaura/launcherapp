@@ -304,10 +304,15 @@ interface FileIndex {
 const indexCache = new Map<string, FileIndex>();
 const indexInflight = new Map<string, Promise<FileIndex>>();
 
+export const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'target', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', '.idea', '.vscode']);
+
 async function walkFiles(dir: string): Promise<string[]> {
   const entries = await readDir(dir);
   const files: string[] = [];
   for (const e of entries) {
+    if (!e.name || EXCLUDED_DIRS.has(e.name)) continue;
+    // Skip hidden directories/files at top level walk (matches FileExplorer)
+    if (e.name.startsWith('.') && e.isDirectory) continue;
     const full = join(dir, e.name);
     if (e.isDirectory) {
       files.push(...await walkFiles(full));

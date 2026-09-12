@@ -481,16 +481,39 @@ pub struct BackendResponse {
 
 #[command]
 pub async fn fetch_external_url(url: String) -> Result<String, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(12))
-        .build();
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Only http/https URLs are allowed".to_string());
+    }
+    let url_clone = url.clone();
+    let inner: Result<String, String> = tokio::task::spawn_blocking(move || {
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(12))
+            .build();
 
-    let response = agent.get(&url)
-        .set("Accept", "application/json, text/plain, */*")
-        .call()
-        .map_err(|e| e.to_string())?;
+        let response = agent
+            .get(&url_clone)
+            .set("Accept", "application/json, text/plain, */*")
+            .call()
+            .map_err(|e| e.to_string())?;
 
-    response.into_string().map_err(|e| e.to_string())
+        if let Some(len_str) = response.header("content-length") {
+            if let Ok(len) = len_str.parse::<usize>() {
+                if len > 2 * 1024 * 1024 {
+                    return Err("Response too large (>2MB)".to_string());
+                }
+            }
+        }
+
+        let text = response.into_string().map_err(|e| e.to_string())?;
+        if text.len() > 2 * 1024 * 1024 {
+            return Err("Response too large (>2MB)".to_string());
+        }
+        Ok(text)
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    inner
 }
 
 #[command]
@@ -500,41 +523,59 @@ pub async fn execute_backend_request(
     headers: HashMap<String, String>,
     body: Option<String>,
 ) -> Result<BackendResponse, String> {
-    let agent = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(15))
-        .build();
-
-    let mut request = agent.request(&method.to_uppercase(), &url);
-
-    // Set headers
-    for (k, v) in headers {
-        request = request.set(&k, &v);
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err("Only http/https URLs are allowed".to_string());
     }
+    let method_clone = method.clone();
+    let headers_clone = headers.clone();
+    let body_clone = body.clone();
+    let url_clone = url.clone();
 
-    let response = if let Some(body_content) = body {
-        request.send_string(&body_content)
-    } else {
-        request.call()
-    };
+    let inner: Result<BackendResponse, String> = tokio::task::spawn_blocking(move || {
+        let agent = ureq::AgentBuilder::new()
+            .timeout(std::time::Duration::from_secs(15))
+            .build();
 
-    let response = response.map_err(|e| e.to_string())?;
-    let status = response.status();
-    
-    // Get headers
-    let mut response_headers = HashMap::new();
-    // ureq response doesn't expose header keys directly easily in v2 without iterate or get. 
-    // We can extract common ones or loop:
-    for header_name in &["content-type", "content-length", "date", "server", "cache-control", "authorization"] {
-        if let Some(val) = response.header(header_name) {
-            response_headers.insert(header_name.to_string(), val.to_string());
+        let mut request = agent.request(&method_clone.to_uppercase(), &url_clone);
+
+        // Set headers
+        for (k, v) in headers_clone {
+            request = request.set(&k, &v);
         }
-    }
 
-    let body = response.into_string().unwrap_or_else(|_| "".to_string());
+        let response = if let Some(body_content) = body_clone {
+            request.send_string(&body_content)
+        } else {
+            request.call()
+        };
 
-    Ok(BackendResponse {
-        status,
-        headers: response_headers,
-        body,
+        let response = response.map_err(|e| e.to_string())?;
+        let status = response.status();
+        
+        // Get headers
+        let mut response_headers = HashMap::new();
+        for header_name in &["content-type", "content-length", "date", "server", "cache-control", "authorization", "x-request-id", "x-correlation-id"] {
+            if let Some(val) = response.header(header_name) {
+                response_headers.insert(header_name.to_string(), val.to_string());
+            }
+        }
+
+        let body_str = response.into_string().unwrap_or_else(|_| "".to_string());
+        // Truncate huge bodies to 2MB to avoid OOM in frontend
+        let body_truncated = if body_str.len() > 2 * 1024 * 1024 {
+            format!("{}... [truncated >2MB]", &body_str[..2 * 1024 * 1024])
+        } else {
+            body_str
+        };
+
+        Ok(BackendResponse {
+            status,
+            headers: response_headers,
+            body: body_truncated,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    inner
 }

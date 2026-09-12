@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, AlertCircle, Send, Globe, CheckCircle, Maximize2, Minimize2, Copy, Check } from 'lucide-react';
+import { Search, AlertCircle, Send, Globe, CheckCircle, Maximize2, Minimize2, Copy, Check, ChevronUp, ChevronDown } from 'lucide-react';
 
 import { invoke } from '@tauri-apps/api/core';
 import { JsonViewer } from './JsonViewer';
@@ -43,12 +43,15 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
 
   // Optional path prefix inserted between host and endpoint path when executing
   // e.g. if prefix is "/api/v1", then: host + /api/v1 + /pipelines
+  // Manager case: swagger at /docs/swagger.json -> execution at /api/v1/pipelines
   const [pathPrefix, setPathPrefix] = useState(() => {
     return localStorage.getItem(`launcher_path_prefix_${projectId}`) || '';
   });
   const [showPathPrefix, setShowPathPrefix] = useState(() => {
     return !!localStorage.getItem(`launcher_path_prefix_${projectId}`);
   });
+  // Raw OpenAPI spec (needed to read servers[] for auto baseUrl)
+  const [rawSpec, setRawSpec] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [endpoints, setEndpoints] = useState<ApiEndpoint[]>([]);
@@ -110,8 +113,37 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   const [manualMode, setManualMode] = useState(false);
   const [manualMethod, setManualMethod] = useState('GET');
   const [manualPath, setManualPath] = useState('http://localhost:8000/api/v1/resource');
+  // Collapse request form to give more space to response (option A - global per project)
+  const [isRequestCollapsed, setIsRequestCollapsed] = useState(() => {
+    return localStorage.getItem(`launcher_api_collapsed_${projectId}`) === '1';
+  });
 
   const hasAutoDetected = useRef(false);
+
+  // Sync swaggerUrl / prefix when projectId changes (useState initializer only runs once)
+  useEffect(() => {
+    const savedUrl = localStorage.getItem(`launcher_swagger_url_${projectId}`);
+    setSwaggerUrl(savedUrl || 'http://localhost:8000/openapi.json');
+    const savedPrefix = localStorage.getItem(`launcher_path_prefix_${projectId}`) || '';
+    setPathPrefix(savedPrefix);
+    setShowPathPrefix(!!savedPrefix);
+    hasAutoDetected.current = false;
+    setEndpoints([]);
+    setSelectedEndpoint(null);
+    setError(null);
+    setDetectedStatus(null);
+    // Restore collapsed preference per project without affecting functionality
+    setIsRequestCollapsed(localStorage.getItem(`launcher_api_collapsed_${projectId}`) === '1');
+  }, [projectId]);
+
+  // Persist collapsed state per project
+  useEffect(() => {
+    if (isRequestCollapsed) {
+      localStorage.setItem(`launcher_api_collapsed_${projectId}`, '1');
+    } else {
+      localStorage.removeItem(`launcher_api_collapsed_${projectId}`);
+    }
+  }, [isRequestCollapsed, projectId]);
 
   // Save swagger url
   useEffect(() => {
@@ -129,6 +161,9 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
       } catch (e) {
         console.error('Error loading saved schema:', e);
       }
+    } else {
+      // No saved schema -> clear previous rawSpec
+      setRawSpec(null);
     }
   }, [projectId]);
 
@@ -358,6 +393,7 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
   };
 
   const parseSwaggerSchema = (schema: any) => {
+    setRawSpec(schema);
     const parsedList: ApiEndpoint[] = [];
     if (!schema || !schema.paths) return;
 
@@ -478,17 +514,46 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
         if (!selectedEndpoint) return;
         method = selectedEndpoint.method;
         
-        // Build base URL: extract host from swagger URL, then optionally add path prefix
+        // Build base URL: prefer servers[] from spec (OpenAPI 3) / host+basePath (Swagger 2), fallback to swaggerUrl origin.
+        // Then apply optional pathPrefix only if not already contained (manager special case: /docs/swagger.json -> /api/v1/pipelines)
         let baseUrl = 'http://localhost:8000';
         try {
-          const parsedUrl = new URL(swaggerUrl);
-          baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
-        } catch {}
+          const origin = new URL(swaggerUrl).origin;
+          let autoBase: string | null = null;
+          if (rawSpec?.servers?.[0]?.url) {
+            const srv = String(rawSpec.servers[0].url).trim();
+            if (srv.startsWith('http://') || srv.startsWith('https://')) {
+              autoBase = srv.replace(/\/$/, '');
+            } else if (srv.startsWith('/')) {
+              autoBase = `${origin}${srv.replace(/\/$/, '')}`;
+            } else if (srv) {
+              autoBase = `${origin}/${srv.replace(/\/$/, '')}`;
+            }
+          } else if (rawSpec?.host) {
+            const scheme = rawSpec.schemes?.[0] || new URL(swaggerUrl).protocol.replace(':', '');
+            const basePath = (rawSpec.basePath || '').replace(/\/$/, '');
+            autoBase = `${scheme}://${rawSpec.host}${basePath}`;
+          }
+          baseUrl = autoBase || `${origin}`;
+        } catch {
+          baseUrl = 'http://localhost:8000';
+        }
 
-        // Append optional path prefix (e.g. /api/v1)
+        // Append optional path prefix (e.g. /api/v1) only if baseUrl doesn't already contain it
         const prefix = pathPrefix.trim().replace(/\/$/, '');
         if (prefix) {
-          baseUrl = `${baseUrl}${prefix.startsWith('/') ? prefix : '/' + prefix}`;
+          const normalizedPrefix = prefix.startsWith('/') ? prefix : '/' + prefix;
+          // Avoid duplication: if baseUrl already ends with prefix or contains it, don't re-append
+          try {
+            const basePath = new URL(baseUrl).pathname.replace(/\/$/, '');
+            if (basePath !== normalizedPrefix && !basePath.endsWith(normalizedPrefix)) {
+              baseUrl = `${baseUrl.replace(/\/$/, '')}${normalizedPrefix}`;
+            }
+          } catch {
+            if (!baseUrl.endsWith(normalizedPrefix)) {
+              baseUrl = `${baseUrl.replace(/\/$/, '')}${normalizedPrefix}`;
+            }
+          }
         }
 
         // Replace path params
@@ -811,9 +876,32 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
             </div>
           )}
 
-          {/* Form Parameters & Body */}
+          {/* Form Parameters & Body — collapsible request section for more response visibility */}
           {(selectedEndpoint || manualMode) && (
-            <div className="flex flex-col gap-4 border-t border-[#1d1d32] pt-4">
+            <div className="flex flex-col gap-3 border-t border-[#1d1d32] pt-3">
+              {/* Collapse toggle — stays visible even when collapsed */}
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-gray-400">
+                  {isRequestCollapsed ? 'Petición (oculta)' : 'Petición'}
+                </span>
+                <button
+                  onClick={() => setIsRequestCollapsed(!isRequestCollapsed)}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium border transition-colors"
+                  style={{
+                    backgroundColor: isRequestCollapsed ? 'rgba(147,51,234,.15)' : 'rgba(100,100,140,.12)',
+                    color: isRequestCollapsed ? '#c084fc' : '#8890b0',
+                    borderColor: isRequestCollapsed ? 'rgba(147,51,234,.35)' : 'rgba(100,100,140,.25)'
+                  }}
+                  title={isRequestCollapsed ? 'Mostrar petición' : 'Ocultar petición para ver más de la respuesta'}
+                >
+                  {isRequestCollapsed ? <ChevronDown size={11} /> : <ChevronUp size={11} />}
+                  {isRequestCollapsed ? 'Mostrar' : 'Ocultar'}
+                </button>
+              </div>
+
+              {/* Collapsible request inputs — response stays always visible */}
+              {!isRequestCollapsed && (
+                <div className="flex flex-col gap-4">
               {/* Path parameters */}
               {!manualMode && Object.keys(pathParams).length > 0 && (
                 <div className="flex flex-col gap-1.5">
@@ -924,10 +1012,12 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
                   )}
                 </button>
               </div>
+                </div>
+              )}
 
-              {/* Response Section */}
+              {/* Response Section — always visible, expands when request collapsed */}
               {(responseStatus !== null || responseBody) && (
-                <div className="flex flex-col gap-2 border-t border-[#1d1d32] pt-4">
+                <div className={`flex flex-col gap-2 border-t border-[#1d1d32] pt-3 ${isRequestCollapsed ? 'flex-1 min-h-[180px]' : ''}`}>
                   <div className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-gray-400 font-sans">Respuesta:</span>
@@ -969,7 +1059,7 @@ export function ApiExplorer({ projectId, projectName, logs, isMaximized, onToggl
                     </div>
                   </div>
 
-                  <div className="p-3 rounded bg-[#07070c] border border-[#1b1b2f] overflow-x-auto max-h-[300px] text-[11px] font-mono">
+                  <div className={`p-3 rounded bg-[#07070c] border border-[#1b1b2f] overflow-x-auto text-[11px] font-mono ${isRequestCollapsed ? 'flex-1 max-h-[65vh] min-h-[260px]' : 'max-h-[300px]'}`}>
                     {responseBody ? (
                       <JsonViewer content={responseBody} maxPreviewLength={200} />
                     ) : (
