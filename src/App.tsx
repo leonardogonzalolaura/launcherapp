@@ -5,8 +5,10 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import {
   Plus, Terminal,
   Trash2, ChevronRight, Loader2, MoreHorizontal,
-  Folder, Monitor, Sun, Moon, Keyboard, Palette, Check, ChevronDown
+  Folder, Monitor, Sun, Moon, Keyboard, Palette, Check, ChevronDown,
+  FileCode2
 } from 'lucide-react';
+import { BranchIcon } from './components/icons/BranchIcon';
 import { Project, ProjectConfig, ProcessTab, LogLine, StreamMessage } from './types';
 import { useTauriCommands } from './hooks/useTauriCommands';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
@@ -1135,13 +1137,62 @@ const handleClearLogs = (processId: string) => {
       ))}
 
       {/* Footer */}
-      <div className="h-8 px-4 flex items-center justify-between text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid var(--border-color)' }}>
-        <div className="flex items-center gap-4 text-muted">
+      <div className="h-8 px-3 flex items-center gap-2 text-xs" style={{ backgroundColor: '#0a0a10', borderTop: '1px solid var(--border-color)' }}>
+        <div className="flex items-center gap-3 text-muted flex-shrink-0">
           <span className="flex items-center gap-1"><Folder size={11} /> {projects.length}</span>
           <span className="flex items-center gap-1"><Monitor size={11} /> {processTabs.length}</span>
         </div>
 
-        <div className="flex items-center gap-1">
+        {/* Centro — info detallada del tab activo */}
+        <div className="flex-1 min-w-0 flex items-center justify-center px-2">
+          {activeTab ? (() => {
+            const liveBranch = gitBranches[activeTab.project_id] ?? activeTab.git_branch;
+            const statusColor = activeTab.status === 'running' ? '#4ade80' : activeTab.status === 'error' ? '#f87171' : '#6b7280';
+            const statusLabel = activeTab.status === 'running' ? 'running' : activeTab.status === 'error' ? 'error' : 'stopped';
+            const fullTitle = `${activeTab.project_name} · ${activeTab.config_name}${activeTab.config_group ? ` [${activeTab.config_group}]` : ''}${liveBranch ? ` ⎇ ${liveBranch}` : ''} · ${statusLabel} · ${activeTab.project_type ?? ''}`;
+            return (
+              <div
+                className="flex items-center gap-1.5 min-w-0 max-w-full truncate text-[10px] leading-none"
+                title={fullTitle}
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <span className="flex-shrink-0" style={{ color: statusColor, fontSize: '7px', lineHeight: 1 }}>●</span>
+                <span className="font-semibold whitespace-nowrap" style={{ color: 'var(--text-secondary)', fontSize: '10.5px' }}>{activeTab.project_name}</span>
+                <span className="opacity-40">·</span>
+                <span className="flex items-center gap-1 whitespace-nowrap">
+                  {activeTab.kind === 'ps' ? <><span style={{ color: '#c084fc' }}>&gt;_</span> PowerShell</> : <><FileCode2 size={10} className="opacity-60" /> {activeTab.config_name}</>}
+                </span>
+                {activeTab.config_group && (
+                  <span className="px-1 py-0 rounded whitespace-nowrap flex-shrink-0" style={{ backgroundColor: '#1e1e38', color: '#8b8bff', fontSize: '8px' }}>{activeTab.config_group}</span>
+                )}
+                {liveBranch && (
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span className="flex items-center gap-1 whitespace-nowrap flex-shrink-0" style={{ color: '#a78bfa' }}><BranchIcon size={10} /> {liveBranch}</span>
+                  </>
+                )}
+                <span className="opacity-40">·</span>
+                <span className="whitespace-nowrap capitalize flex-shrink-0" style={{ color: statusColor }}>{statusLabel}</span>
+                {activeTab.project_type && (
+                  <>
+                    <span className="opacity-40">·</span>
+                    <span className="whitespace-nowrap flex-shrink-0">{activeTab.project_type}</span>
+                  </>
+                )}
+              </div>
+            );
+          })() : (
+            <span className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>
+              {contextProject ? (
+                <span className="flex items-center gap-1.5"><Folder size={10} /> {contextProject.name} <span className="opacity-40">·</span> {contextProject.project_type}</span>
+              ) : (
+                'Sin tab activo — ejecuta un comando para ver detalles aquí'
+              )}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => setTabPosition(prev => prev === 'top' ? 'bottom' : 'top')}
             className="px-2 py-0.5 rounded hover:bg-hover transition-colors text-[10px] font-mono text-muted"
