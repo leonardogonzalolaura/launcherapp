@@ -11,6 +11,8 @@ import { css } from '@codemirror/lang-css';
 import { html } from '@codemirror/lang-html';
 import { java } from '@codemirror/lang-java';
 import { csharp } from '@replit/codemirror-lang-csharp';
+import { StreamLanguage } from '@codemirror/language';
+import { scala } from '@codemirror/legacy-modes/mode/clike';
 import type { Parser } from '@lezer/common';
 import { isNavLanguage, tokenAt, getImportInfo, findDefinitionLine, resolveImport, findFileByTypeName, hasCachedFile, memberReceiverName, findMethodTarget } from '../util/editorNav';
 import { editorThemeExtensions, type EditorTheme } from '../util/editorThemes';
@@ -317,6 +319,7 @@ function getExtensions(
     case 'html': ext.push(html()); break;
     case 'java': ext.push(java()); break;
     case 'csharp': ext.push(csharp()); break;
+    case 'scala': ext.push(StreamLanguage.define(scala)); break;
   }
 
   const parser = getLanguageParser(language);

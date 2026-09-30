@@ -54,6 +54,7 @@ pub async fn run() {
             commands::project::unwatch_git_branch,
             commands::project::fetch_external_url,
             commands::project::execute_backend_request,
+            commands::search::search_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

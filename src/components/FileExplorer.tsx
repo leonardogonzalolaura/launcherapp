@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Search, Copy, Check } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Search, Copy, Check, FileText } from 'lucide-react';
 import { readDir } from '@tauri-apps/plugin-fs';
-import { getProjectFileIndex } from '../util/editorNav';
+import { invoke } from '@tauri-apps/api/core';
 
 interface FileExplorerProps {
   rootPath: string;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, line?: number) => void;
 }
 
 interface TreeNode {
@@ -32,6 +32,7 @@ const getFileIcon = (name: string): string => {
     case 'toml': case 'yaml': case 'yml': return '⚙️';
     case 'sql': return '🗃️';
     case 'sh': case 'bat': case 'ps1': return '💻';
+    case 'scala': case 'sbt': case 'sc': return '🦭';
     case 'env': case 'gitignore': return '🔒';
     default: return '📄';
   }
@@ -67,7 +68,9 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   const [rootNodes, setRootNodes] = useState<TreeNode[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
-  const [searchResults, setSearchResults] = useState<TreeNode[] | null>(null);
+  const [fileResults, setFileResults] = useState<TreeNode[]>([]);
+  const [contentResults, setContentResults] = useState<{ name: string; path: string; line: number; snippet: string }[]>([]);
+  const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
@@ -113,8 +116,10 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
 
   useEffect(() => {
     const term = search.trim();
-    if (!term) {
-      setSearchResults(null);
+    if (!term || term.length < 2) {
+      setFileResults([]);
+      setContentResults([]);
+      setHasSearched(false);
       setSearching(false);
       return;
     }
@@ -123,56 +128,31 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      const termLower = term.toLowerCase();
       try {
-        // Prefer in-memory index (fast, no extra disk I/O) — built by editorNav
-        const index = await getProjectFileIndex(rootPath);
-        const results: TreeNode[] = [];
-        for (const arr of index.byBase.values()) {
-          for (const fullPath of arr) {
-            const name = fullPath.split('/').pop() || fullPath;
-            if (name.toLowerCase().includes(termLower)) {
-              results.push({ name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
-            }
-          }
-        }
-        // If index empty (first load not yet built), fallback to disk walk
-        if (results.length === 0 && index.byPath.size === 0) {
-          const visited = new Set<string>();
-          async function walk(dir: string) {
-            if (visited.has(dir)) return;
-            visited.add(dir);
-            try {
-              const entries = await readDir(dir);
-              for (const entry of entries) {
-                if (!entry.name || EXCLUDED_DIRS.has(entry.name)) continue;
-                if (entry.name.startsWith('.')) continue;
-                const fullPath = `${dir}/${entry.name}`;
-                if (entry.isFile && entry.name.toLowerCase().includes(termLower)) {
-                  results.push({ name: entry.name, path: fullPath, isFile: true, children: [], expanded: false, loading: false });
-                }
-                if (!entry.isFile) {
-                  await walk(fullPath);
-                }
-              }
-            } catch { /* skip unreadable dirs */ }
-          }
-          await walk(rootPath);
-        }
-        results.sort((a, b) => a.name.localeCompare(b.name));
-        setSearchResults(results);
+        // Búsqueda unificada en Rust: nombres + contenido, insensible a mayúsculas
+        const res = await invoke<{ files: { name: string; path: string }[]; contents: { name: string; path: string; line: number; snippet: string }[] }>(
+          'search_files',
+          { root: rootPath, term },
+        );
+        setFileResults((res.files ?? []).map(f => ({ name: f.name, path: f.path, isFile: true, children: [], expanded: false, loading: false })));
+        setContentResults(res.contents ?? []);
+        setHasSearched(true);
       } catch {
-        setSearchResults([]);
+        setFileResults([]);
+        setContentResults([]);
+        setHasSearched(true);
       } finally {
         setSearching(false);
       }
-    }, 300);
+    }, 250);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [search, rootPath]);
 
+  const isSearching = search.trim().length >= 2;
+
   const flatNodes = useMemo(() => {
-    if (search.trim() && searchResults) return searchResults;
+    if (isSearching) return [...fileResults, ...contentResults.map(c => ({ name: c.name, path: `${c.path}:${c.line}`, isFile: true as const, children: [] as TreeNode[], expanded: false, loading: false }))];
     const result: TreeNode[] = [];
     const walk = (nodes: TreeNode[]) => {
       for (const node of nodes) {
@@ -185,7 +165,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     };
     walk(rootNodes);
     return result;
-  }, [rootNodes, matchesSearch, search, searchResults]);
+  }, [rootNodes, matchesSearch, isSearching, fileResults, contentResults]);
 
   const focusNode = useCallback((path: string | null) => {
     if (!path) return;
@@ -240,7 +220,16 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
         e.preventDefault();
         if (currentIndex >= 0) {
           const node = flatNodes[currentIndex];
-          if (node.isFile) {
+          if (isSearching) {
+            // path sintético "ruta:línea" para contenidos
+            const sep = node.path.lastIndexOf(':');
+            const maybeLine = sep > 0 ? Number(node.path.slice(sep + 1)) : NaN;
+            if (!Number.isNaN(maybeLine) && maybeLine > 0 && contentResults.some(c => `${c.path}:${c.line}` === node.path)) {
+              onOpenFile(node.path.slice(0, sep), maybeLine - 1);
+            } else {
+              onOpenFile(node.path.includes(':') && node.path.startsWith(rootPath) ? node.path.split(':')[0] : node.path);
+            }
+          } else if (node.isFile) {
             onOpenFile(node.path);
           } else {
             toggleExpand(node.path);
@@ -254,7 +243,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
     if (nextIndex >= 0 && nextIndex < flatNodes.length) {
       focusNode(flatNodes[nextIndex].path);
     }
-  }, [flatNodes, focusedPath, onOpenFile, toggleExpand, focusNode]);
+  }, [flatNodes, focusedPath, onOpenFile, toggleExpand, focusNode, isSearching, contentResults, rootPath]);
 
   const handleNodeClick = useCallback((path: string) => {
     setFocusedPath(path);
@@ -378,7 +367,7 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
                 }
               }
             }}
-            placeholder="Buscar archivos..."
+            placeholder="Buscar por nombre o contenido..."
             className="bg-transparent text-xs outline-none w-full text-primary"
           />
         </div>
@@ -391,48 +380,86 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
       >
         {loading ? (
           <div className="text-xs text-center py-8 text-muted">Loading...</div>
-        ) : search.trim() ? (
+        ) : isSearching ? (
           searching ? (
             <div className="text-xs text-center py-8 text-muted">Searching...</div>
-          ) : searchResults === null ? (
-            <div className="text-xs text-center py-8 text-muted">Type to search files...</div>
-          ) : searchResults.length === 0 ? (
-            <div className="text-xs text-center py-8 text-muted">No files found</div>
+          ) : (fileResults.length === 0 && contentResults.length === 0) ? (
+            <div className="text-xs text-center py-8 text-muted">{hasSearched ? 'Sin resultados' : 'Escribe para buscar...'}</div>
           ) : (
             <div className="py-1">
-              <div className="text-[10px] px-3 py-1 text-muted">{searchResults.length} result{searchResults.length !== 1 ? 's' : ''}</div>
-              {searchResults.map((node) => {
-                const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
-                const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
-                const isCopied = copiedPath === node.path;
-                return (
-                  <div
-                    key={node.path}
-                    className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
-                    onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
-                    title={`${node.path} — click para abrir, click derecho para copiar`}
-                  >
-                    <button
-                      onClick={() => onOpenFile(node.path)}
-                      className="flex-1 flex items-center gap-2 text-left text-xs min-w-0"
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
-                      <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
-                      {displayPath && (
-                        <span className="truncate text-[10px] text-muted flex-shrink-0 ml-2">{displayPath}</span>
-                      )}
-                    </button>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
-                      className="p-1 rounded hover:bg-hover flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
-                      title="Copiar ruta"
-                    >
-                      {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-muted" />}
-                    </button>
-                  </div>
-                );
-              })}
+              {fileResults.length > 0 && (
+                <>
+                  <div className="text-[10px] px-3 py-1 text-muted font-semibold uppercase">Archivos ({fileResults.length})</div>
+                  {fileResults.map((node) => {
+                    const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
+                    const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
+                    const isCopied = copiedPath === node.path;
+                    return (
+                      <div
+                        key={`f-${node.path}`}
+                        className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
+                        onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
+                        title={`${node.path} — click para abrir, click derecho para copiar`}
+                      >
+                        <button
+                          onClick={() => onOpenFile(node.path)}
+                          className="flex-1 flex items-center gap-2 text-left text-xs min-w-0"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
+                          <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
+                          {displayPath && (
+                            <span className="truncate text-[10px] text-muted flex-shrink-0 ml-2">{displayPath}</span>
+                          )}
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
+                          className="p-1 rounded hover:bg-hover flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                          title="Copiar ruta"
+                        >
+                          {isCopied ? <Check size={11} className="text-green-400" /> : <Copy size={11} className="text-muted" />}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+              {contentResults.length > 0 && (
+                <>
+                  <div className="text-[10px] px-3 py-1 text-muted font-semibold uppercase">Contenido ({contentResults.length})</div>
+                  {contentResults.map((c) => {
+                    const parentPath = c.path.substring(0, c.path.lastIndexOf('/'));
+                    const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
+                    const key = `c-${c.path}:${c.line}`;
+                    return (
+                      <div
+                        key={key}
+                        className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
+                        onContextMenu={(e) => { e.preventDefault(); copyPath(c.path); }}
+                        title={`${c.path}:${c.line} — click para abrir en línea ${c.line}`}
+                      >
+                        <button
+                          onClick={() => onOpenFile(c.path, c.line - 1)}
+                          className="flex-1 flex items-start gap-2 text-left text-xs min-w-0"
+                          style={{ color: 'var(--text-secondary)' }}
+                        >
+                          <span className="flex-shrink-0 text-[11px] mt-0.5"><FileText size={11} /></span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{c.name}</span>
+                              <span className="text-[10px] font-mono px-1 rounded flex-shrink-0" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>: {c.line}</span>
+                            </span>
+                            <span className="block truncate text-[11px] text-muted" title={c.snippet}>{c.snippet}</span>
+                            {displayPath && (
+                              <span className="block truncate text-[10px] text-muted">{displayPath}</span>
+                            )}
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
             </div>
           )
         ) : (

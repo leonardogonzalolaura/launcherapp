@@ -37,7 +37,7 @@ const LANGUAGE_MAP: Record<string, string> = {
   json: 'json', md: 'markdown', css: 'css', html: 'html', rs: 'rust',
   yaml: 'yaml', yml: 'yaml', toml: 'toml', xml: 'xml', sql: 'sql',
   sh: 'shell', bat: 'shell', ps1: 'shell',
-  cs: 'csharp', java: 'java',
+  cs: 'csharp', java: 'java', scala: 'scala', sbt: 'scala', sc: 'scala',
 };
 
 function detectLanguage(path: string): string {
@@ -543,7 +543,7 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
                 </button>
               </div>
               <div className="flex-1 overflow-hidden">
-                <FileExplorer rootPath={projectPath} onOpenFile={openFile} />
+                <FileExplorer rootPath={projectPath} onOpenFile={handleOpenForNav} />
               </div>
             </div>
           </div>
