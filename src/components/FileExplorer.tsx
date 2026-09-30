@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { ChevronRight, ChevronDown, Folder, Search, Copy, Check, FileText } from 'lucide-react';
+import { ChevronRight, ChevronDown, Folder, Search, Copy, Check, FileText, X } from 'lucide-react';
 import { readDir } from '@tauri-apps/plugin-fs';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -18,6 +18,31 @@ interface TreeNode {
 }
 
 const EXCLUDED_DIRS = new Set(['node_modules', '.git', 'target', '__pycache__', '.venv', 'venv', 'dist', 'build', '.next', '.idea', '.vscode']);
+
+function highlightTerm(text: string, term: string) {
+  const t = term.trim();
+  if (!t || t.length < 2) return text;
+  const lower = text.toLowerCase();
+  const needle = t.toLowerCase();
+  const idx = lower.indexOf(needle);
+  if (idx < 0) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark
+        style={{
+          backgroundColor: 'rgba(192,132,252,.30)',
+          color: 'inherit',
+          borderRadius: 3,
+          padding: '0 1px',
+        }}
+      >
+        {text.slice(idx, idx + t.length)}
+      </mark>
+      {text.slice(idx + t.length)}
+    </>
+  );
+}
 
 const getFileIcon = (name: string): string => {
   const ext = name.split('.').pop()?.toLowerCase();
@@ -72,6 +97,8 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   const [contentResults, setContentResults] = useState<{ name: string; path: string; line: number; snippet: string }[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [filesCollapsed, setFilesCollapsed] = useState(true);
+  const [contentsCollapsed, setContentsCollapsed] = useState(true);
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -137,6 +164,9 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
         setFileResults((res.files ?? []).map(f => ({ name: f.name, path: f.path, isFile: true, children: [], expanded: false, loading: false })));
         setContentResults(res.contents ?? []);
         setHasSearched(true);
+        // Por defecto todo colapsado en cada búsqueda nueva
+        setFilesCollapsed(true);
+        setContentsCollapsed(true);
       } catch {
         setFileResults([]);
         setContentResults([]);
@@ -352,8 +382,8 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="px-3 py-2 flex-shrink-0">
-        <div className="flex items-center gap-1.5 rounded px-2 py-1" style={{ backgroundColor: 'var(--bg-elevated)' }}>
-          <Search size={11} className="text-muted flex-shrink-0" />
+        <div className="flex items-center gap-1.5 rounded-lg px-2 py-1 transition-colors focus-within:ring-1 focus-within:ring-[#6e7fff]/50" style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}>
+          <Search size={12} className="text-muted flex-shrink-0" />
           <input
             ref={searchRef}
             type="text"
@@ -368,8 +398,27 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
               }
             }}
             placeholder="Buscar por nombre o contenido..."
-            className="bg-transparent text-xs outline-none w-full text-primary"
+            className="bg-transparent text-xs outline-none w-full text-primary placeholder:text-muted/60"
           />
+          {search && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setFileResults([]);
+                setContentResults([]);
+                setHasSearched(false);
+                setSearching(false);
+                searchRef.current?.focus();
+              }}
+              className="flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+              style={{ backgroundColor: 'var(--bg-hover)', color: 'var(--text-muted)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(239,68,68,.2)'; e.currentTarget.style.color = '#f87171'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--bg-hover)'; e.currentTarget.style.color = 'var(--text-muted)'; }}
+              title="Limpiar búsqueda"
+            >
+              <X size={10} strokeWidth={2.5} />
+            </button>
+          )}
         </div>
       </div>
       <div
@@ -382,22 +431,41 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
           <div className="text-xs text-center py-8 text-muted">Loading...</div>
         ) : isSearching ? (
           searching ? (
-            <div className="text-xs text-center py-8 text-muted">Searching...</div>
+            <div className="text-xs text-center py-8 text-muted">
+              <span className="text-base">🔍</span>
+              <div className="mt-1">Buscando...</div>
+            </div>
           ) : (fileResults.length === 0 && contentResults.length === 0) ? (
-            <div className="text-xs text-center py-8 text-muted">{hasSearched ? 'Sin resultados' : 'Escribe para buscar...'}</div>
+            <div className="text-xs text-center py-8 text-muted">
+              <span className="text-base opacity-60">🔍</span>
+              <div className="mt-1">{hasSearched ? 'Sin resultados' : 'Escribe para buscar...'}</div>
+            </div>
           ) : (
-            <div className="py-1">
+            <div className="py-1 px-1">
               {fileResults.length > 0 && (
                 <>
-                  <div className="text-[10px] px-3 py-1 text-muted font-semibold uppercase">Archivos ({fileResults.length})</div>
-                  {fileResults.map((node) => {
+                  <button
+                    onClick={() => setFilesCollapsed(v => !v)}
+                    className="w-full flex items-center gap-1.5 px-2 py-1 rounded transition-colors hover:bg-hover text-left"
+                    title={filesCollapsed ? 'Expandir archivos' : 'Colapsar archivos'}
+                  >
+                    {filesCollapsed ? <ChevronRight size={12} className="text-muted flex-shrink-0" /> : <ChevronDown size={12} className="text-muted flex-shrink-0" />}
+                    <span
+                      className="text-[9px] font-semibold tracking-wide px-1.5 py-px rounded-md"
+                      style={{ backgroundColor: 'rgba(110,127,255,.15)', color: '#8b96ff' }}
+                    >
+                      Archivos
+                    </span>
+                    <span className="text-[9px] font-mono font-semibold px-1.5 py-px rounded-md" style={{ backgroundColor: 'rgba(110,127,255,.12)', color: '#8b96ff' }}>{fileResults.length}</span>
+                  </button>
+                  {!filesCollapsed && fileResults.map((node) => {
                     const parentPath = node.path.substring(0, node.path.lastIndexOf('/'));
                     const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
                     const isCopied = copiedPath === node.path;
                     return (
                       <div
                         key={`f-${node.path}`}
-                        className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
+                        className="group flex items-center w-full pl-2.5 pr-2 py-1.5 rounded-lg transition-colors hover:bg-hover"
                         onContextMenu={(e) => { e.preventDefault(); copyPath(node.path); }}
                         title={`${node.path} — click para abrir, click derecho para copiar`}
                       >
@@ -406,11 +474,13 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
                           className="flex-1 flex items-center gap-2 text-left text-xs min-w-0"
                           style={{ color: 'var(--text-secondary)' }}
                         >
-                          <span className="flex-shrink-0 text-[11px]">{getFileIcon(node.name)}</span>
-                          <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{node.name}</span>
-                          {displayPath && (
-                            <span className="truncate text-[10px] text-muted flex-shrink-0 ml-2">{displayPath}</span>
-                          )}
+                          <span className="flex-shrink-0 text-[13px] w-5 h-5 rounded-md flex items-center justify-center" style={{ backgroundColor: 'rgba(110,127,255,.12)' }}>{getFileIcon(node.name)}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium" style={{ color: 'var(--text-primary)' }}>{highlightTerm(node.name, search)}</span>
+                            {displayPath && (
+                              <span className="block truncate text-[10px] text-muted">{displayPath}</span>
+                            )}
+                          </span>
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); copyPath(node.path); }}
@@ -426,15 +496,28 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
               )}
               {contentResults.length > 0 && (
                 <>
-                  <div className="text-[10px] px-3 py-1 text-muted font-semibold uppercase">Contenido ({contentResults.length})</div>
-                  {contentResults.map((c) => {
+                  <button
+                    onClick={() => setContentsCollapsed(v => !v)}
+                    className="w-full flex items-center gap-1.5 px-2 py-1 mt-0.5 rounded transition-colors hover:bg-hover text-left"
+                    title={contentsCollapsed ? 'Expandir contenido' : 'Colapsar contenido'}
+                  >
+                    {contentsCollapsed ? <ChevronRight size={12} className="text-muted flex-shrink-0" /> : <ChevronDown size={12} className="text-muted flex-shrink-0" />}
+                    <span
+                      className="text-[9px] font-semibold tracking-wide px-1.5 py-px rounded-md"
+                      style={{ backgroundColor: 'rgba(192,132,252,.15)', color: '#c084fc' }}
+                    >
+                      Contenido
+                    </span>
+                    <span className="text-[9px] font-mono font-semibold px-1.5 py-px rounded-md" style={{ backgroundColor: 'rgba(192,132,252,.12)', color: '#c084fc' }}>{contentResults.length}</span>
+                  </button>
+                  {!contentsCollapsed && contentResults.map((c) => {
                     const parentPath = c.path.substring(0, c.path.lastIndexOf('/'));
                     const displayPath = parentPath.length > 0 ? parentPath.replace(rootPath, '') : '';
                     const key = `c-${c.path}:${c.line}`;
                     return (
                       <div
                         key={key}
-                        className="group flex items-center w-full px-3 py-1 rounded hover:bg-hover transition-colors"
+                        className="group flex items-center w-full pl-2.5 pr-2 py-1.5 rounded-lg transition-colors hover:bg-hover"
                         onContextMenu={(e) => { e.preventDefault(); copyPath(c.path); }}
                         title={`${c.path}:${c.line} — click para abrir en línea ${c.line}`}
                       >
@@ -443,15 +526,15 @@ export function FileExplorer({ rootPath, onOpenFile }: FileExplorerProps) {
                           className="flex-1 flex items-start gap-2 text-left text-xs min-w-0"
                           style={{ color: 'var(--text-secondary)' }}
                         >
-                          <span className="flex-shrink-0 text-[11px] mt-0.5"><FileText size={11} /></span>
+                          <span className="flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center mt-0.5" style={{ backgroundColor: 'rgba(192,132,252,.12)', color: '#c084fc' }}><FileText size={11} /></span>
                           <span className="min-w-0 flex-1">
-                            <span className="flex items-center gap-1.5">
-                              <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{c.name}</span>
-                              <span className="text-[10px] font-mono px-1 rounded flex-shrink-0" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>: {c.line}</span>
+                            <span className="flex items-center gap-1.5 min-w-0">
+                              <span className="truncate font-medium" style={{ color: 'var(--text-primary)' }}>{highlightTerm(c.name, search)}</span>
+                              <span className="text-[10px] font-mono px-1.5 py-px rounded-md flex-shrink-0" style={{ backgroundColor: 'rgba(192,132,252,.15)', color: '#c084fc' }}>: {c.line}</span>
                             </span>
-                            <span className="block truncate text-[11px] text-muted" title={c.snippet}>{c.snippet}</span>
+                            <span className="block truncate text-[11px] font-mono mt-0.5 px-1.5 py-0.5 rounded" style={{ backgroundColor: 'var(--bg-elevated)', color: 'var(--text-secondary)' }} title={c.snippet}>{highlightTerm(c.snippet, search)}</span>
                             {displayPath && (
-                              <span className="block truncate text-[10px] text-muted">{displayPath}</span>
+                              <span className="block truncate text-[10px] text-muted mt-0.5">{displayPath}</span>
                             )}
                           </span>
                         </button>

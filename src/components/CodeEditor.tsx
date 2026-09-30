@@ -434,9 +434,27 @@ export function CodeEditor({ content, language, projectPath, filePath, initialLi
   }, []);
 
   const openFind = useCallback(() => {
+    const view = viewRef.current;
+    if (view) {
+      const sel = view.state.selection.main;
+      // Solo si hay texto sombreado (rango no colapsado)
+      if (sel.to > sel.from) {
+        let text = view.state.sliceDoc(sel.from, sel.to);
+        // Quedarse con la primera línea y limitar longitud
+        text = text.split(/\r?\n/)[0].trim().slice(0, 120);
+        if (text) {
+          setQuery(text);
+          view.dispatch({ effects: setSearchQuery.of(new SearchQuery({ search: text, caseSensitive: false, regexp: false })) });
+          updateMatchInfo(view);
+        }
+      }
+    }
     setFindOpen(true);
-    requestAnimationFrame(() => findInputRef.current?.focus());
-  }, []);
+    requestAnimationFrame(() => {
+      findInputRef.current?.focus();
+      findInputRef.current?.select();
+    });
+  }, [updateMatchInfo]);
 
   const closeFind = useCallback(() => {
     setFindOpen(false);
