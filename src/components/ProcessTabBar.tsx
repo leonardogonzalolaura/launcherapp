@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Maximize2, MoreHorizontal } from 'lucide-react';
 import { ProcessTab, EditorSession } from '../types';
 import { BranchIcon } from './icons/BranchIcon';
@@ -18,9 +19,50 @@ interface ProcessTabBarProps {
 }
 
 export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onCloseTab, minimizedEditors = [], onRestoreEditor, onCloseEditor, position = 'top' }: ProcessTabBarProps) {
-  if (tabs.length === 0 && minimizedEditors.length === 0) return null;
-
   const [showOverflow, setShowOverflow] = useState(false);
+  const overflowButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+
+  const updateMenuPosition = () => {
+    const el = overflowButtonRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const right = Math.max(8, window.innerWidth - rect.right);
+    if (position === 'bottom') {
+      setMenuStyle({
+        position: 'fixed',
+        bottom: Math.max(8, window.innerHeight - rect.top + 4),
+        right,
+      });
+    } else {
+      setMenuStyle({
+        position: 'fixed',
+        top: rect.bottom + 4,
+        right,
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (!showOverflow) return;
+    updateMenuPosition();
+    const onResize = () => updateMenuPosition();
+    const onScroll = () => updateMenuPosition();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowOverflow(false);
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('keydown', onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showOverflow, position]);
+
+  if (tabs.length === 0 && minimizedEditors.length === 0) return null;
 
   const runningProjectIds = new Set(tabs.map(t => t.project_id));
   const standaloneEditors = minimizedEditors.filter(ed => !runningProjectIds.has(ed.project_id));
@@ -147,8 +189,9 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
         );
       })}
       {overflowCount > 0 && (
-        <div className="relative flex-shrink-0">
+        <div className="flex-shrink-0">
           <button
+            ref={overflowButtonRef}
             onClick={() => setShowOverflow(v => !v)}
             className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors"
             style={{
@@ -161,12 +204,12 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
             <MoreHorizontal size={12} />
             <span className="text-[10px]">+{overflowCount}</span>
           </button>
-          {showOverflow && (
+          {showOverflow && typeof document !== 'undefined' && createPortal(
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowOverflow(false)} />
+              <div className="fixed inset-0 z-[9998]" onClick={() => setShowOverflow(false)} />
               <div
-                className={`absolute right-0 min-w-[280px] max-w-[380px] max-h-[320px] overflow-y-auto rounded-lg shadow-2xl z-30 py-1 ${position === 'bottom' ? 'bottom-full mb-1' : 'top-full mt-1'}`}
-                style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
+                className="min-w-[280px] max-w-[380px] max-h-[320px] overflow-y-auto rounded-lg shadow-2xl z-[9999] py-1"
+                style={{ ...menuStyle, backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-color)' }}
               >
                 {overflowTabs.map(tab => {
                   const isActive = tab.process_id === activeTabId;
@@ -236,8 +279,9 @@ export function ProcessTabBar({ tabs, activeTabId, gitBranches, onSelectTab, onC
                   </div>
                 ))}
               </div>
-            </>
-          )}
+            </>,
+              document.body
+            )}
         </div>
       )}
     </div>
