@@ -319,11 +319,14 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
       if (!isWindowDraggingRef.current) return;
       const dx = mv.clientX - startX;
       const dy = mv.clientY - startY;
-      const maxX = Math.max(0, window.innerWidth - startPos.w - 8);
-      const maxY = Math.max(0, window.innerHeight - startPos.h - 8);
+      // Allow dragging partially off-screen: only keep ~40px of header visible
+      const HEADER_MIN = 40;
+      const maxX = window.innerWidth - HEADER_MIN;
+      const minX = -(startPos.w - HEADER_MIN);
+      const maxY = window.innerHeight - HEADER_MIN;
       const newPos = {
         ...startPos,
-        x: Math.max(0, Math.min(maxX, startLeft + dx)),
+        x: Math.max(minX, Math.min(maxX, startLeft + dx)),
         y: Math.max(0, Math.min(maxY, startTop + dy)),
       };
       onUpdatePos?.(newPos);
