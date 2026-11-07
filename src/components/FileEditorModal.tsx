@@ -242,6 +242,33 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
     onClose();
   }, [openFiles, onClose]);
 
+  const handleCloseAll = useCallback(async () => {
+    const dirty = openFiles.some(f => f.content !== f.savedContent);
+    if (dirty) {
+      const confirmed = await new Promise<boolean>(resolve => {
+        setConfirmClose(true);
+        confirmResolveRef.current = resolve;
+      });
+      setConfirmClose(false);
+      if (!confirmed) return;
+    }
+    setOpenFiles([]);
+    setActiveIndex(-1);
+  }, [openFiles]);
+
+  // Swap the selected overflow tab with the last visible tab so it becomes visible
+  const handleSelectOverflow = useCallback((overflowIndex: number, visibleCount: number) => {
+    setOpenFiles(prev => {
+      const next = [...prev];
+      const swapWith = visibleCount - 1; // last visible tab
+      // swap
+      [next[swapWith], next[overflowIndex]] = [next[overflowIndex], next[swapWith]];
+      return next;
+    });
+    // After swap, the selected file is now at swapWith position
+    setActiveIndex(visibleCount - 1);
+  }, []);
+
   const handleConfirmResponse = (confirmed: boolean) => {
     confirmResolveRef.current?.(confirmed);
   };
@@ -502,7 +529,9 @@ export function FileEditorModal({ projectPath, projectName, gitBranch, defaultEd
             files={openFiles.map(f => ({ path: f.path, name: f.name, language: f.language, dirty: f.content !== f.savedContent }))}
             activeIndex={activeIndex}
             onSelect={setActiveIndex}
+            onSelectOverflow={handleSelectOverflow}
             onClose={closeFile}
+            onCloseAll={handleCloseAll}
           />
         )}
 
